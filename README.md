@@ -69,6 +69,30 @@ Set `BOLNA_API_KEY`, `BOLNA_AGENT_ID`, and `BOLNA_TOOL_SHARED_SECRET`. Configure
 
 Set `BOLNA_API_KEY`, `BOLNA_AGENT_ID`, and `BOLNA_TOOL_SHARED_SECRET` in `.env`. Configure the agent custom function with `POST /api/v1/tools/tutor-turn`, the `X-Scribble-Tool-Secret` header, `scribble_session_id` context, and the student request as `question`. Never expose Bolna credentials through `NEXT_PUBLIC_` variables.
 
+## Accounts and sync (Supabase)
+
+Signing in is optional. Signed-out users keep working entirely in local-only mode (localStorage), exactly as before. Once signed in:
+
+- The current session (strokes, notes, tutor turns, view state) syncs to a `sessions` row scoped to that user via row-level security.
+- Uploaded PDFs sync to a private `pdfs` Storage bucket, so reopening the session on another device restores the actual file, not just its name.
+- On sign-in, whichever copy (local or remote) has the newer `updated_at` wins, so you never silently lose the most recent work on either device.
+
+To enable it:
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Run `docs/supabase-schema.sql` in the Supabase SQL editor (creates the `sessions` table, its RLS policies, and the private `pdfs` bucket + policies).
+3. In **Authentication → Providers**, email OTP (magic link) is enabled by default; no extra config needed for the built-in "Sign in" panel.
+4. Add to `.env.local`:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your-project-url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   ```
+5. Restart `npm run dev`. The header's **Sign in** control now sends real magic links.
+
+Without those two variables set, the app runs exactly as it does today — the **Sign in** button is still visible (consistent with how **Listen** behaves without Bolna credentials) but explains that accounts aren't configured yet if you try it.
+
+**Known scope boundary:** the schema models one synced session per user, matching the app's current single-session design. Multiple named sessions per account (session list) is a natural next step once this is in place.
+
 ## Useful API routes
 
 

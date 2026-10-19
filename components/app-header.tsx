@@ -2,14 +2,18 @@
 
 import { KeyboardEvent } from "react";
 import { TutorControls } from "./tutor-controls";
+import { AuthPanel } from "./auth-panel";
+import type { SignInResult } from "../lib/supabase/auth";
 import type { VoiceState } from "../lib/bolna-client";
 import type { View } from "../lib/types";
 
 type TutorProps = Parameters<typeof TutorControls>[0];
+export type SyncStatus = "idle" | "syncing" | "synced" | "error";
 
 export function AppHeader({
   sessionName, editingName, nameDraft, onStartEdit, onDraftChange, onCommitName, onCancelEdit,
   voice, view, onGoHome, pdfContextLabel, notesContextLabel, tutorProps,
+  authEmail, onSignIn, onSignOut, syncStatus,
 }: {
   sessionName: string;
   editingName: boolean;
@@ -24,6 +28,10 @@ export function AppHeader({
   pdfContextLabel: string;
   notesContextLabel: string;
   tutorProps: TutorProps;
+  authEmail: string | null;
+  onSignIn: (email: string) => Promise<SignInResult>;
+  onSignOut: () => void;
+  syncStatus: SyncStatus;
 }) {
   const onNameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") onCommitName();
@@ -51,11 +59,16 @@ export function AppHeader({
           ) : (
             <button className="session-name" onClick={onStartEdit} title="Rename this session">{sessionName}</button>
           )}
-          <span className="save-state" title="Your strokes, notes, and tutor turns are stored only in this browser.">
-            <i /> Saved locally
+          <span
+            className="save-state"
+            title={authEmail ? "Saved locally, and synced to your account so you can reopen this session on another device." : "Your strokes, notes, and tutor turns are stored only in this browser. Sign in to sync them to an account."}
+          >
+            <i className={authEmail ? syncStatus : undefined} />
+            {authEmail ? (syncStatus === "syncing" ? "Syncing" : syncStatus === "error" ? "Sync error" : "Saved · synced") : "Saved locally"}
           </span>
         </div>
         <div className="top-actions">
+          <AuthPanel email={authEmail} onSignIn={onSignIn} onSignOut={onSignOut} />
           <span className={`voice-pill ${voice}`} title="Start a voice conversation with the tutor using your microphone.">
             <i />
             {voice === "active" ? "Listening" : voice === "connecting" ? "Connecting" : voice === "muted" ? "Muted" : voice === "error" ? "Voice unavailable" : "Voice ready"}

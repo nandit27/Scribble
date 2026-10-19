@@ -90,8 +90,8 @@ export function BoardPane({
         <span className="toolbar-divider" />
         <div className="toolbar-group stroke-steps" role="group" aria-label="Stroke size">
           {STROKE_STEPS.map((step) => (
-            <button key={step.width} className={width === step.width ? "is-active" : ""} aria-pressed={width === step.width} onClick={() => onWidthChange(step.width)} aria-label={step.label} title={step.label}>
-              <span className="stroke-preview" style={{ height: Math.max(2, step.width) }} />
+            <button key={step.width} className={width === step.width ? "is-selected" : ""} aria-pressed={width === step.width} onClick={() => onWidthChange(step.width)} aria-label={step.label} title={step.label}>
+              <span className="stroke-preview" style={{ height: step.preview }} />
             </button>
           ))}
         </div>

@@ -6,9 +6,9 @@ export const COLOR_NAMES: Record<string, string> = {
   "#5a8c61": "Moss",
 };
 export const STROKE_STEPS = [
-  { width: 2, label: "Fine" },
-  { width: 3, label: "Medium" },
-  { width: 6, label: "Bold" },
+  { width: 2, label: "Fine", preview: 3 },
+  { width: 3, label: "Medium", preview: 5 },
+  { width: 6, label: "Bold", preview: 8 },
 ] as const;
 
 export const ZOOM_PRESETS = [60, 75, 100, 125, 150, 160];

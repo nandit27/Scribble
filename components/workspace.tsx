@@ -6,12 +6,14 @@ import { makeId } from "../lib/id";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
 import type { Artifact, BoardNote, Point, SavedState, Stroke, Tool, Turn, View } from "../lib/types";
-import { AppHeader } from "./app-header";
+import { AppHeader, SyncStatus } from "./app-header";
 import { WelcomeScreen } from "./welcome-screen";
 import { PdfPane } from "./pdf-pane";
 import { BoardPane } from "./board-pane";
 import { SplitDivider } from "./split-divider";
 import { Toast, useToast } from "./toast";
+import { useSupabaseAuth } from "../lib/supabase/auth";
+import { fetchRemoteSession, getPdfSignedUrl, pushRemoteSession, uploadPdfToStorage } from "../lib/supabase/sync";
 
 const SESSION_KEY = "scribble-demo-session-v3";
 const HIGHLIGHT_HINT_KEY = "scribble-highlight-hint-seen";
@@ -61,7 +63,12 @@ export function Workspace() {
   const [askOpen, setAskOpen] = useState(false);
   const [current, setCurrent] = useState<{ question: string; mode: string } | null>(null);
 
+  const [pdfPath, setPdfPath] = useState<string | undefined>(undefined);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+
   const toast = useToast();
+  const auth = useSupabaseAuth();
+  const mergedUserId = useRef<string | null>(null);
   const voiceCall = useRef<ReturnType<typeof createVoiceCall> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -96,16 +103,68 @@ export function Workspace() {
   useEffect(() => { if (view !== "split") setFocusedPane(null); }, [view]);
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
+    const t = window.setTimeout(async () => {
       const now = new Date().toISOString();
       setUpdatedAt(now);
-      localStorage.setItem(SESSION_KEY, JSON.stringify({
-        strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, boardContextEnabled,
-      }));
+      const payload: SavedState = {
+        strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, pdfPath, boardContextEnabled,
+      };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+      if (auth.user) {
+        setSyncStatus("syncing");
+        const ok = await pushRemoteSession(auth.user.id, payload);
+        setSyncStatus(ok ? "synced" : "error");
+      }
     }, 300);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strokes, notes, turns, page, zoom, sessionName, splitRatio, lastPdfName, boardContextEnabled]);
+  }, [strokes, notes, turns, page, zoom, sessionName, splitRatio, lastPdfName, pdfPath, boardContextEnabled, auth.user]);
+
+  // On sign-in: adopt whichever copy (local or remote) is more recently updated, so work from any
+  // device wins instead of silently clobbering the other. Signed-out users are unaffected (local-only).
+  useEffect(() => {
+    const userId = auth.user?.id ?? null;
+    if (!userId) { mergedUserId.current = null; setSyncStatus("idle"); return; }
+    if (mergedUserId.current === userId) return;
+    mergedUserId.current = userId;
+
+    (async () => {
+      setSyncStatus("syncing");
+      const remote = await fetchRemoteSession(userId);
+      const localUpdatedAt = updatedAt ? new Date(updatedAt).getTime() : 0;
+      const remoteUpdatedAt = remote?.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+
+      if (remote && remoteUpdatedAt > localUpdatedAt) {
+        setStrokes(remote.strokes || []);
+        setNotes(remote.notes || []);
+        setTurns(remote.turns || []);
+        setPage(remote.page || 1);
+        setZoom(remote.zoom || 100);
+        setSessionName(remote.sessionName || DEFAULT_SESSION_NAME);
+        setNameDraft(remote.sessionName || DEFAULT_SESSION_NAME);
+        setSplitRatio(remote.splitRatio ?? 0.5);
+        setLastPdfName(remote.pdfName || "");
+        setBoardContextEnabled(remote.boardContextEnabled ?? true);
+        setUpdatedAt(remote.updatedAt);
+        if (remote.pdfPath) {
+          setPdfPath(remote.pdfPath);
+          const url = await getPdfSignedUrl(remote.pdfPath);
+          if (url) { setPdfUrl(url); setPdfName(remote.pdfName || "Document.pdf"); }
+        }
+        toast.show("Signed in. Restored your most recent saved session.");
+        setSyncStatus("synced");
+      } else {
+        const now = new Date().toISOString();
+        setUpdatedAt(now);
+        const ok = await pushRemoteSession(userId, {
+          strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, pdfPath, boardContextEnabled,
+        });
+        setSyncStatus(ok ? "synced" : "error");
+        toast.show(ok ? "Signed in. This session is now synced to your account." : "Signed in, but syncing failed. Your work is still saved locally.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.user]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -161,12 +220,17 @@ export function Workspace() {
     if (file.type !== "application/pdf") { setFileError("Choose a PDF file."); return; }
     if (file.size > 15 * 1024 * 1024) { setFileError("Choose a PDF under 15 MB."); return; }
     setPdfLoading(true);
-    window.setTimeout(() => {
+    window.setTimeout(async () => {
       setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
       setPdfName(file.name);
+      setPdfPath(undefined);
       setPage(1);
       setPdfLoading(false);
       toast.show(`${file.name} is open. Highlights stay separate from the original file.`);
+      if (auth.user) {
+        const path = await uploadPdfToStorage(auth.user.id, file);
+        if (path) setPdfPath(path);
+      }
     }, 400);
   };
   const uploadPdf = (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) acceptFile(file); e.target.value = ""; };
@@ -241,6 +305,10 @@ export function Workspace() {
         pdfContextLabel={pdfContextLabel}
         notesContextLabel={notesContextLabel}
         tutorProps={tutorProps}
+        authEmail={auth.user?.email ?? null}
+        onSignIn={auth.signInWithEmail}
+        onSignOut={auth.signOut}
+        syncStatus={syncStatus}
       />
 
       {view === "welcome" ? (

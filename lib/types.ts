@@ -30,6 +30,7 @@ export type SavedState = {
   updatedAt?: string;
   splitRatio?: number;
   pdfName?: string;
+  pdfPath?: string;
   boardContextEnabled?: boolean;
 };
 
