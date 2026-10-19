@@ -1,111 +1,100 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { createVoiceCall } from "../lib/bolna-client";
+import { ChangeEvent, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createVoiceCall, VoiceState } from "../lib/bolna-client";
 
-type Step = { text: string; latex?: string };
-type Graph = { expression: string; points: { x: number; y: number }[] };
-type Turn = { turn_id: string; question_text: string; spoken_response: string; artifact: { type: string; title: string; steps: Step[]; graph?: Graph | null }; verification: { status: string } };
-type Worksheet = { id: string; problem_text: string; expressions: string[]; confidence: number; ambiguities: { text: string; reason: string }[]; confirmed_problem_text?: string; parse_status: string };
+type Point = { x: number; y: number };
+type Stroke = { id: string; points: Point[]; color: string; width: number };
+type BoardNote = { id: string; x: number; y: number; text: string; kind: "note" | "equation" };
+type Graph = { expression: string; points: Point[] };
+type Artifact = { type: "steps" | "graph" | "check"; title: string; body: string; steps?: string[]; graph?: Graph; status: string };
+type Turn = { id: string; question: string; response: string; artifact: Artifact; createdAt: string };
+type SavedState = { strokes: Stroke[]; notes: BoardNote[]; turns: Turn[]; page: number; zoom: number };
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const SAMPLE = "Determine and sketch the function f(x) = sin(x) + x/3. Describe what happens around x = 0.";
+const SESSION_KEY = "scribble-demo-session-v2";
+const COLORS = ["#202019", "#4073d9", "#d96349", "#5a8c61"];
+
+function makeId() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`; }
 
 function GraphView({ graph }: { graph: Graph }) {
-  const { path, xAxis, yAxis } = useMemo(() => {
-    const points = graph.points;
-    const xs = points.map((p) => p.x); const ys = points.map((p) => p.y);
+  const path = useMemo(() => {
+    const xs = graph.points.map((p) => p.x), ys = graph.points.map((p) => p.y);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-    const sx = (x: number) => ((x - minX) / (maxX - minX)) * 100;
-    const sy = (y: number) => 100 - ((y - minY) / (maxY - minY)) * 100;
-    return { path: points.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" "), xAxis: sy(0), yAxis: sx(0) };
+    const sx = (x: number) => ((x - minX) / (maxX - minX || 1)) * 100;
+    const sy = (y: number) => 100 - ((y - minY) / (maxY - minY || 1)) * 100;
+    return { d: graph.points.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" "), x: sy(0), y: sx(0) };
   }, [graph]);
-  return <div className="graph"><div className="graph-label">y = {graph.expression}</div><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`Graph of ${graph.expression}`}><path className="axis" d={`M0 ${xAxis} H100 M${yAxis} 0 V100`} /><path className="curve" d={path} /></svg></div>;
+  return <div className="graph-card"><code>y = {graph.expression}</code><svg viewBox="0 0 100 100" role="img" aria-label={`Graph of ${graph.expression}`}><path className="axis" d={`M0 ${path.x}H100 M${path.y} 0V100`} /><path className="curve" d={path.d} /></svg></div>;
+}
+
+function makeArtifact(question: string): Artifact {
+  const q = question.toLowerCase();
+  if (q.includes("plot") || q.includes("graph")) {
+    const expression = q.includes("cos") ? "cos(x)" : q.includes("x²") || q.includes("x^2") ? "x²" : "sin(x) + x/3";
+    const points = Array.from({ length: 61 }, (_, i) => { const x = -6 + i / 5; const y = expression === "cos(x)" ? Math.cos(x) : expression === "x²" ? x * x / 5 : Math.sin(x) + x / 3; return { x, y }; });
+    return { type: "graph", title: "A quick visual check", body: "This bounded plot is generated locally from the supported expression. It is illustrative, not a proof.", graph: { expression, points }, status: "not_applicable" };
+  }
+  if (q.includes("check") || q.includes("correct")) return { type: "check", title: "Work check", body: "I can compare the typed work with the active context. Your visible strokes are not transcribed, so this result is unverified—select or type the step you want checked.", steps: ["Identify the exact step to check.", "Compare each transformation with the rule being used.", "Test the result with a simple value before continuing."], status: "unverified" };
+  const hint = q.includes("hint");
+  return { type: "steps", title: hint ? "A next-step hint" : "Why this step works", body: hint ? "Look for the operation that changes the outer function, then name the rule that matches it." : "Here is a compact explanation grounded in the active study surface.", steps: hint ? ["Circle the expression that changes.", "Ask which rule describes that change.", "Apply only that rule before simplifying."] : ["Name the quantity or rule in the selected line.", "Substitute the known values without changing the structure.", "Simplify one operation at a time and check the units or signs."], status: "not_applicable" };
+}
+
+function Board({ strokes, notes, tool, color, width, onStroke, onErase, onAddNote, onRemoveNote, onUndo, onRedo, canUndo, canRedo }: { strokes: Stroke[]; notes: BoardNote[]; tool: string; color: string; width: number; onStroke: (s: Stroke) => void; onErase: (p: Point) => void; onAddNote: (p: Point) => void; onRemoveNote: (id: string) => void; onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean }) {
+  const [active, setActive] = useState<Point[] | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const point = (e: PointerEvent) => { const r = svgRef.current?.getBoundingClientRect(); return r ? { x: e.clientX - r.left, y: e.clientY - r.top } : { x: 0, y: 0 }; };
+  const down = (e: PointerEvent) => { if (tool === "text") { onAddNote(point(e)); return; } setActive([point(e)]); e.currentTarget.setPointerCapture(e.pointerId); };
+  const move = (e: PointerEvent) => { if (active) { const p = point(e); if (tool === "eraser") onErase(p); else setActive([...active, p]); } };
+  const up = () => { if (active && active.length > 1 && tool === "pen") onStroke({ id: makeId(), points: active, color, width }); setActive(null); };
+  return <div className="board-canvas-wrap"><svg ref={svgRef} className="board-canvas" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} aria-label="Interactive whiteboard">
+    {strokes.map((s) => <polyline key={s.id} points={s.points.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" />)}
+    {active && <polyline points={active.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />}
+    {notes.map((n) => <foreignObject key={n.id} x={n.x} y={n.y} width="220" height="100"><div className={`board-note ${n.kind}`}><button className="note-remove" onPointerDown={(e) => e.stopPropagation()} onClick={() => onRemoveNote(n.id)} aria-label="Dismiss note">×</button><span>{n.kind === "equation" ? "∑" : "✦"}</span>{n.text}</div></foreignObject>)}
+  </svg><div className="board-hint">{tool === "text" ? "Click anywhere to add a note" : "Draw directly on the paper · strokes save automatically"}</div><div className="board-history"><button onClick={onUndo} disabled={!canUndo} aria-label="Undo">↶</button><button onClick={onRedo} disabled={!canRedo} aria-label="Redo">↷</button></div></div>;
 }
 
 export function Workspace() {
-  const [sessionId, setSessionId] = useState<string>();
-  const [worksheet, setWorksheet] = useState<Worksheet>();
-  const [problem, setProblem] = useState(SAMPLE);
-  const [question, setQuestion] = useState("");
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [notes, setNotes] = useState<BoardNote[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [state, setState] = useState<"welcome" | "confirm" | "ready" | "working">("welcome");
-  const [voice, setVoice] = useState<"idle" | "connecting" | "active" | "muted" | "error">("idle");
-  const [notice, setNotice] = useState("");
-  const voiceCall = useRef<ReturnType<typeof createVoiceCall> | undefined>(undefined);
+  const [history, setHistory] = useState<Stroke[][]>([]);
+  const [future, setFuture] = useState<Stroke[][]>([]);
+  const [tool, setTool] = useState("pen");
+  const [color, setColor] = useState(COLORS[0]);
+  const [width, setWidth] = useState(3);
+  const [question, setQuestion] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [voice, setVoice] = useState<VoiceState>("idle");
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [pdfName, setPdfName] = useState("");
+  const [page, setPage] = useState(1);
+  const [zoom, setZoom] = useState(100);
+  const [notice, setNotice] = useState("Demo mode is ready. Your work is saved privately in this browser.");
+  const [mobileTab, setMobileTab] = useState<"pdf" | "board" | "tutor">("board");
+  const voiceCall = useRef<ReturnType<typeof createVoiceCall> | null>(null);
 
-  useEffect(() => { void createSession(); }, []);
-  useEffect(() => () => { void voiceCall.current?.stop(); }, []);
-  useEffect(() => {
-    if (!sessionId || state !== "ready") return;
-    const poll = window.setInterval(() => void loadTurns(), 2500);
-    return () => window.clearInterval(poll);
-  }, [sessionId, state]);
-
-  async function api(path: string, options?: RequestInit) {
-    const response = await fetch(`${API}${path}`, options);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail?.message ?? data.message ?? "Something went wrong.");
-    return data;
-  }
-  async function createSession() {
-    try { const data = await api("/api/v1/sessions", { method: "POST" }); setSessionId(data.session_id); }
-    catch { setNotice("Scribble could not start a workspace. Is the API running on port 8000?"); }
-  }
-  async function loadTurns() { if (!sessionId) return; const data = await api(`/api/v1/sessions/${sessionId}/turns`); setTurns(data.turns); }
-  async function useSample() {
-    if (!sessionId) return;
-    setWorksheet({ id: "sample", problem_text: SAMPLE, expressions: ["sin(x) + x/3"], confidence: 1, ambiguities: [], parse_status: "needs_confirmation" });
-    setProblem(SAMPLE); setState("confirm"); setNotice("Sample worksheet loaded. Review the problem, then confirm it.");
-  }
-  async function onUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]; if (!file || !sessionId) return;
-    if (!/^(image\/png|image\/jpeg|application\/pdf)$/.test(file.type) || file.size > 10 * 1024 * 1024) { setNotice("Choose a PNG, JPG, or PDF under 10 MB."); return; }
-    setNotice("Reading your worksheet…");
-    try { const form = new FormData(); form.append("file", file); const data = await api(`/api/v1/sessions/${sessionId}/worksheets`, { method: "POST", body: form }); const parsed = await api(`/api/v1/worksheets/${data.worksheet_id}`); setWorksheet(parsed); setProblem(parsed.problem_text); setState("confirm"); setNotice("Review the extraction before starting your tutor session."); }
-    catch (e) { setNotice(e instanceof Error ? e.message : "That file did not upload."); }
-  }
-  async function confirm() {
-    if (!sessionId || !worksheet || problem.trim().length < 3) return;
-    try {
-      if (worksheet.id !== "sample") await api(`/api/v1/worksheets/${worksheet.id}/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ problem_text: problem, expressions: worksheet.expressions }) });
-      else { // The sample uses the same server workflow through a tiny invisible upload substitute.
-        const blob = new Blob(["sample"], { type: "image/png" }); const form = new FormData(); form.append("file", blob, "sample-worksheet.png"); const created = await api(`/api/v1/sessions/${sessionId}/worksheets`, { method: "POST", body: form }); await api(`/api/v1/worksheets/${created.worksheet_id}/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ problem_text: problem, expressions: worksheet.expressions }) }); setWorksheet({ ...worksheet, id: created.worksheet_id });
-      }
-      setState("ready"); setNotice("Worksheet confirmed. Ask Scribble out loud or type a question.");
-    } catch (e) { setNotice(e instanceof Error ? e.message : "Could not confirm the worksheet."); }
-  }
-  async function ask(event: FormEvent) {
-    event.preventDefault(); if (!sessionId || !question.trim() || state !== "ready") return;
-    setState("working"); setNotice("Scribble is checking the worksheet…");
-    const asked = question; setQuestion("");
-    try { await api(`/api/v1/sessions/${sessionId}/tutor-turn`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scribble_session_id: sessionId, question: asked }) }); await loadTurns(); setNotice("A new note was added to your notebook."); }
-    catch (e) { setNotice(e instanceof Error ? e.message : "Scribble could not answer that yet."); }
-    finally { setState("ready"); }
-  }
-  async function startVoice() {
-    if (!sessionId || state !== "ready") return;
-    setVoice("connecting");
-    try { const call = createVoiceCall(sessionId, (next, message) => { setVoice(next); if (message) setNotice(message); }); voiceCall.current = call; await call.start(); setVoice("active"); setNotice("Scribble is listening. Ask about the worksheet whenever you’re ready."); }
-    catch (e) { setVoice("error"); setNotice(e instanceof Error ? e.message : "Voice could not start. Type a question instead."); }
-  }
-  const toggleMute = () => { if (!voiceCall.current) return; const muted = voice !== "muted"; voiceCall.current.setMuted(muted); setVoice(muted ? "muted" : "active"); };
-  const endVoice = () => { void voiceCall.current?.stop(); voiceCall.current = undefined; setVoice("idle"); setNotice("Voice session ended. Your worksheet and notes are still here."); };
-  const voiceLabel = voice === "active" ? "● Listening" : voice === "muted" ? "Muted" : voice === "connecting" ? "Connecting" : "Voice ready";
-
-  return <main>
-    <header><div className="brand"><span className="brand-mark">S</span><span>Scribble</span></div><div className="status"><span className={`dot ${voice === "active" ? "live" : ""}`} /> {voiceLabel}</div></header>
-    <section className="hero"><p className="eyebrow">YOUR VOICE-POWERED MATH TUTOR</p><h1>Keep the question on the page.</h1><p>Upload once, ask naturally, and let the explanation appear beside your work.</p></section>
-    {notice && <div className="notice" role="status">{notice}</div>}
-    <div className="workspace">
-      <section className="paper worksheet"><div className="panel-top"><span>WORKSHEET</span><span className="small-status">{state === "ready" ? "Confirmed" : "Waiting for review"}</span></div>
-        {state === "welcome" && <div className="empty"><div className="upload-icon">↑</div><h2>Bring in your work</h2><p>PNG, JPG, or PDF · up to 10 MB</p><label className="button primary">Upload worksheet<input type="file" accept="image/png,image/jpeg,application/pdf" onChange={onUpload} hidden /></label><button className="text-button" onClick={useSample}>Try the sample worksheet</button></div>}
-        {state !== "welcome" && worksheet && <><div className="worksheet-preview"><div className="handwrite">f(x) = sin(x) + x/3</div><div className="scribble-line" /><div className="ghost-work">Find the shape of the curve<br />and explain the next step.</div></div><div className="extraction"><label>Extracted problem</label><textarea value={problem} disabled={state === "ready" || state === "working"} onChange={(e) => setProblem(e.target.value)} />{worksheet.ambiguities.length > 0 && state !== "ready" && <p className="ambiguity">Needs review: {worksheet.ambiguities[0].reason}</p>}{state === "confirm" && <button className="button primary full" onClick={confirm}>Use this problem</button>}</div></>}
-      </section>
-      <section className="paper notebook"><div className="panel-top"><span>SCRIBBLE&apos;S NOTES</span><span className="small-status">{state === "working" ? "Thinking…" : `${turns.length} notes`}</span></div>
-        {!turns.length ? <div className="notes-empty"><span>✦</span><h2>Your explanation will land here.</h2><p>Ask for a hint, a concept explanation, a work check, or a graph.</p></div> : <div className="turns">{turns.map((turn) => <article className="turn" key={turn.turn_id}><div className="turn-heading"><span>{turn.artifact.title}</span><em>{turn.verification.status.replace("_", " ")}</em></div><p>{turn.spoken_response}</p>{turn.artifact.steps.map((step, index) => <div className="step" key={index}><b>{index + 1}</b><span>{step.text}</span></div>)}{turn.artifact.graph && <GraphView graph={turn.artifact.graph} />}</article>)}</div>}
-      </section>
+  useEffect(() => { try { const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null") as SavedState | null; if (saved) { setStrokes(saved.strokes || []); setNotes(saved.notes || []); setTurns(saved.turns || []); setPage(saved.page || 1); setZoom(saved.zoom || 100); setNotice("Reopened your last saved study session."); } } catch { setNotice("Could not restore the previous session; a fresh workspace is ready."); } return () => { void voiceCall.current?.stop(); }; }, []);
+  useEffect(() => { const t = window.setTimeout(() => { localStorage.setItem(SESSION_KEY, JSON.stringify({ strokes, notes, turns, page, zoom })); }, 300); return () => window.clearTimeout(t); }, [strokes, notes, turns, page, zoom]);
+  const addStroke = (s: Stroke) => { setHistory((h) => [...h, strokes]); setFuture([]); setStrokes((v) => [...v, s]); };
+  const erase = (p: Point) => { const remaining = strokes.filter((s) => !s.points.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 20)); if (remaining.length !== strokes.length) { setHistory((h) => [...h, strokes]); setStrokes(remaining); } };
+  const undo = () => { const previous = history.at(-1); if (!previous) return; setFuture((f) => [...f, strokes]); setStrokes(previous); setHistory((h) => h.slice(0, -1)); };
+  const redo = () => { const next = future.at(-1); if (!next) return; setHistory((h) => [...h, strokes]); setStrokes(next); setFuture((f) => f.slice(0, -1)); };
+  const addNote = (p: Point, text = "New note") => setNotes((v) => [...v, { id: makeId(), x: p.x, y: p.y, text, kind: "note" }]);
+  const removeNote = (id: string) => setNotes((v) => v.filter((note) => note.id !== id));
+  const insertArtifact = (artifact: Artifact) => { const text = artifact.type === "steps" ? `${artifact.title}\n${artifact.steps?.join("\n")}` : artifact.body; addNote({ x: 80, y: 80 + notes.length * 30 }, text,); setNotice("Artifact inserted on the board. You can move or dismiss it by clearing the note."); };
+  async function ask(e?: FormEvent) { e?.preventDefault(); const asked = question.trim(); if (!asked || busy) return; setBusy(true); setQuestion(""); await new Promise((r) => setTimeout(r, 500)); const artifact = makeArtifact(asked); setTurns((v) => [...v, { id: makeId(), question: asked, response: artifact.body, artifact, createdAt: new Date().toISOString() }]); setBusy(false); setNotice("Tutor response ready. Review it, then insert it into your board if useful."); }
+  const uploadPdf = (e: ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; if (file.type !== "application/pdf" || file.size > 15 * 1024 * 1024) { setNotice("Choose a PDF under 15 MB. The original stays in your browser."); return; } if (pdfUrl) URL.revokeObjectURL(pdfUrl); setPdfUrl(URL.createObjectURL(file)); setPdfName(file.name); setPage(1); setNotice(`${file.name} is open. PDF annotations are non-destructive overlays.`); };
+  const startVoice = async () => { setVoice("connecting"); try { const call = createVoiceCall("local-demo-session", (s, msg) => { setVoice(s); if (msg) setNotice(msg); }); voiceCall.current = call; await call.start(); setVoice("active"); setNotice("Microphone active. Ask a short question, or use typed input at any time."); } catch { setVoice("error"); setNotice("Voice is unavailable without Bolna credentials. Typed tutoring remains available."); } };
+  const endVoice = () => { void voiceCall.current?.stop(); voiceCall.current = null; setVoice("idle"); setNotice("Voice ended. Your notes remain saved."); };
+  const addHighlight = () => { addNote({ x: 80, y: 120 }, `PDF page ${page} highlight\nSelected region (normalized)`,); setNotice("A page-relative highlight note was added to the board; the source PDF is unchanged."); };
+  return <main className="app-shell">
+    <header className="topbar"><div className="brand"><span className="brand-mark">S</span><span>Scribble</span></div><div className="session-meta"><strong>Calculus warm-up</strong><span className="save-state"><i /> Saved locally</span></div><div className="top-actions"><span className={`voice-pill ${voice}`}>● {voice === "active" ? "Listening" : voice === "connecting" ? "Connecting" : "Voice idle"}</span><button className="icon-button" aria-label="Settings">⚙</button></div></header>
+    <div className="notice" role="status">{notice}</div>
+    <nav className="mobile-tabs" aria-label="Workspace panels">{(["pdf", "board", "tutor"] as const).map((tab) => <button key={tab} className={mobileTab === tab ? "active" : ""} onClick={() => setMobileTab(tab)}>{tab === "pdf" ? "Document" : tab === "board" ? "Whiteboard" : "Tutor"}</button>)}</nav>
+    <div className="workspace-grid">
+      <section className={`surface pdf-panel ${mobileTab === "pdf" ? "mobile-visible" : ""}`}><div className="surface-head"><div><span className="label">DOCUMENT</span><h2>{pdfName || "Open a study PDF"}</h2></div><label className="small-button">Open PDF<input type="file" accept="application/pdf" hidden onChange={uploadPdf} /></label></div><div className="pdf-toolbar"><button onClick={() => setPage(Math.max(1, page - 1))}>‹</button><span>Page {page}</span><button onClick={() => setPage(page + 1)}>›</button><span className="toolbar-divider" /><button onClick={() => setZoom(Math.max(60, zoom - 10))}>−</button><span>{zoom}%</span><button onClick={() => setZoom(Math.min(160, zoom + 10))}>＋</button><button className="annotation-button" onClick={addHighlight}>▱ Highlight</button></div><div className="pdf-stage">{pdfUrl ? <iframe title={pdfName || "PDF document"} src={`${pdfUrl}#page=${page}&zoom=${zoom}`} style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left", width: `${10000 / zoom}%`, height: `${10000 / zoom}%` }} /> : <div className="pdf-empty"><div className="document-icon">▤</div><h3>Your source stays beside your work</h3><p>Open any PDF to read it here. Use Highlight to create a non-destructive, page-relative study note.</p><label className="button primary">Choose PDF<input type="file" accept="application/pdf" hidden onChange={uploadPdf} /></label><button className="text-button" onClick={() => setNotice("Demo context: f(x) = sin(x) + x/3. Ask the tutor to explain, hint, check, or plot it.")}>Use demo context</button></div>}</div></section>
+      <section className={`surface board-panel ${mobileTab === "board" ? "mobile-visible" : ""}`}><div className="surface-head board-head"><div><span className="label">WHITEBOARD</span><h2>Untitled study notes</h2></div><span className="context-chip">● Active context</span></div><div className="board-tools"><button className={tool === "pen" ? "selected" : ""} onClick={() => setTool("pen")}>✎ Pen</button><button className={tool === "eraser" ? "selected" : ""} onClick={() => setTool("eraser")}>⌫ Eraser</button><button className={tool === "text" ? "selected" : ""} onClick={() => setTool("text")}>T Text</button><span className="toolbar-divider" />{COLORS.map((c) => <button key={c} className={`color-dot ${color === c ? "picked" : ""}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={`Use ${c}`} />)}<select value={width} onChange={(e) => setWidth(Number(e.target.value))} aria-label="Stroke width"><option value={2}>Fine</option><option value={3}>Medium</option><option value={6}>Bold</option></select></div><Board strokes={strokes} notes={notes} tool={tool} color={color} width={width} onStroke={addStroke} onErase={erase} onAddNote={(p) => addNote(p)} onRemoveNote={removeNote} onUndo={undo} onRedo={redo} canUndo={history.length > 0} canRedo={future.length > 0} /></section>
+      <aside className={`surface tutor-panel ${mobileTab === "tutor" ? "mobile-visible" : ""}`}><div className="surface-head"><div><span className="label">TUTOR / CONTEXT</span><h2>Ask Scribble</h2></div><span className="context-chip">Page {page} · board</span></div><div className="context-summary"><span>✦</span><div><strong>Context is ready</strong><small>Active page, highlights, board notes, and recent turns</small></div></div><div className="conversation">{!turns.length && <div className="conversation-empty"><span>✦</span><p>Ask for a hint, explain a step, check your work, or plot a function.</p></div>}{turns.map((t) => <article className="tutor-turn" key={t.id}><div className="question-bubble">{t.question}</div><div className="artifact"><div className="artifact-head"><strong>{t.artifact.title}</strong><span>{t.artifact.status.replace("_", " ")}</span></div><p>{t.response}</p>{t.artifact.steps?.map((s, i) => <div className="tutor-step" key={s}><b>{i + 1}</b>{s}</div>)}{t.artifact.graph && <GraphView graph={t.artifact.graph} />}<button className="insert-button" onClick={() => insertArtifact(t.artifact)}>＋ Insert on board</button></div></article>)}</div><div className="prompt-chips">{["Explain this step", "Give me a hint", "Check my work", "Plot this function"].map((p) => <button key={p} onClick={() => { setQuestion(p); }}>{p}</button>)}</div><form className="ask-form" onSubmit={ask}><input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ask about your work…" disabled={busy} /><button type="submit" disabled={!question.trim() || busy} aria-label="Send question">{busy ? "…" : "↑"}</button></form><div className="voice-controls"><button className="voice-start" onClick={startVoice} disabled={voice === "connecting" || voice === "active" || voice === "muted"}>◉ {voice === "error" ? "Retry voice" : "Start voice"}</button><button onClick={() => { if (voiceCall.current) voiceCall.current.setMuted(voice !== "muted"); setVoice(voice === "muted" ? "active" : "muted"); }} disabled={voice !== "active" && voice !== "muted"}>Mute</button><button onClick={endVoice} disabled={voice === "idle"}>End</button></div><small className="privacy-note">Microphone starts only after you click. Typed fallback is always available.</small></aside>
     </div>
-    <footer className="controls"><div className="voice-buttons"><button className="button voice" onClick={startVoice} disabled={state !== "ready" || voice === "connecting" || voice === "active" || voice === "muted"}>{voice === "active" ? "Voice active" : "Start voice"}</button><button className="button muted" onClick={toggleMute} disabled={voice !== "active" && voice !== "muted"}>{voice === "muted" ? "Unmute" : "Mute"}</button><button className="button muted" onClick={endVoice} disabled={voice === "idle"}>End</button></div><form onSubmit={ask}><input value={question} onChange={(e) => setQuestion(e.target.value)} disabled={state !== "ready"} placeholder="Ask about the problem you’re working on…" /><button className="send" disabled={state !== "ready" || !question.trim()} aria-label="Send question">↑</button></form></footer>
   </main>;
 }
