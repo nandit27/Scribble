@@ -4,6 +4,9 @@
 
 Scribble is a voice-first math tutoring workspace built for the **Bolna AI × Y Combinator Symphony Buildathon**. A student uploads a worksheet once, confirms the extracted problem, asks a question out loud, and receives both a spoken explanation and a structured visual note beside the original work.
 
+<img width="1775" height="866" alt="image" src="https://github.com/user-attachments/assets/f58f7103-fdf6-415a-940a-6a5c5290f832" />
+
+
 > **Upload once → ask naturally → understand the step → see it appear beside the work.**
 
 Scribble is not a generic chatbot with a microphone. Voice is the primary interaction, and each tutor turn can produce an inspectable artifact: a hint, concept explanation, work-check note, equation step, or graph.
