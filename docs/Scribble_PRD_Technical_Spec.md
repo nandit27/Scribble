@@ -1,1163 +1,1328 @@
-# Scribble — Product Requirements & Technical Specification
+# Scribble --- Product Requirements & Technical Specification
 
-**Document type:** PRD + Technical Design  
-**Version:** 1.0  
-**Prepared:** 18 October 2026  
-**Target event:** Bolna AI × Y Combinator Symphony Buildathon  
-**Submission deadline listed on the buildathon page:** 31 October 2026  
-**Project name:** Scribble  
-**Working tagline:** *Your voice-powered AI math tutor, right inside your notebook.*
+**Version:** 2.0 · **Updated:** 19 October 2026 · **Buildathon:** Bolna
+AI × Y Combinator Symphony Buildathon\
+**Product:** Full-stack Next.js website · **Deployment:** Vercel
 
-> **Scope decision:** Build a polished, end-to-end web demo where a student uploads a worksheet, asks a math question aloud through Bolna, and sees the tutor's grounded explanation and visual artifacts appear beside the work. Do not make the MVP depend on true ambient always-on listening, perfect handwriting imitation, or general-purpose OCR across every subject.
-
----
+> **Non-negotiable architecture:** Scribble is one Next.js application.
+> All UI, application APIs, authorization, data access, agent
+> orchestration, and provider integrations live in the same Next.js
+> codebase. Do not create a Chrome extension, FastAPI/Python service,
+> Express server, or a separately deployed Scribble backend. Managed
+> services and external APIs for authentication, storage, voice, and
+> model inference are dependencies, not additional application servers.
 
 ## 1. Executive Summary
 
-Scribble is a voice-first AI math tutor designed to live beside a student's handwritten work. It removes the repeated context-switching loop of photographing a notebook, transferring the image to a phone, uploading it to an AI chatbot, explaining the context, and repeating the process for every doubt.
+Scribble is a browser-based study workspace combining a freeform digital
+whiteboard, an in-browser PDF reader, and an agentic tutor that
+understands the student's current work and helps through voice or text.
 
-The student uploads a photo or PDF of their homework, reviews the extracted problem, and starts a voice session. They can then ask natural questions such as, “Why did you use the right-sided signal here?”, “Where did I make a mistake?”, or “Can you explain that step more slowly?” Scribble keeps the active worksheet as context, responds through a live voice agent powered by **Bolna**, and displays the explanation as readable steps, equations, error annotations, or a graph on a notebook-style canvas.
+A student opens Scribble, starts with a blank board or opens a PDF,
+writes or annotates in the workspace, and asks questions such as "Why
+does this step follow?", "Check my derivative," or "Give me just a
+hint." The tutor uses the active document, selected region, visible
+notes, and recent conversation as context. It responds conversationally
+and can create artifacts on the board: explanatory steps, equations,
+highlights, graph data, or a clearly marked suspected mistake.
 
-The product should feel like a tutor sitting next to the student—not like a chatbot that expects the student to keep packaging and uploading context.
+**Product promise:** *Your notebook. Your PDFs. A tutor built in.*
 
-### The core loop
+### Core loop
 
-1. **Drop in the homework** — upload a page image or PDF.
-2. **Confirm the problem** — Scribble extracts the relevant math and lets the student correct mistakes.
-3. **Ask out loud** — start a voice session and ask a question naturally.
-4. **Understand** — Bolna manages the spoken conversation and calls Scribble's tutoring API for grounded help.
-5. **See it on the page** — the answer appears as structured steps, equations, an error marker, or a graph.
-6. **Continue without re-uploading** — follow-up questions reuse the active worksheet and conversation context.
+1.  Create a session or open a PDF.
+2.  Read, write, draw, and annotate in one workspace.
+3.  Ask a question by voice or text.
+4.  The agent uses the active page, selection, board state, and
+    conversation context.
+5.  The answer appears as a spoken response plus a structured artifact.
+6.  Insert or dismiss the artifact; continue with contextual follow-ups.
+7.  Save and reopen the study session.
 
-### What makes it distinct
+### Differentiation
 
-- **Voice is the primary input**, not a voice-to-text field added to a standard chatbot.
-- The tutor understands the **current worksheet and current step**, rather than treating every question as an isolated prompt.
-- Spoken explanations are connected to **visible, inspectable output**: equations, steps, mistakes, and plots.
-- The tutor is designed to guide learning with hints and explanations instead of reflexively dumping a final answer.
+Scribble is not a chatbot with a microphone or a PDF viewer with a chat
+sidebar. The tutor can reason over the student's current study surface
+and return visible actions to that same surface.
 
----
+## 2. Product and Architecture Decisions
 
-## 2. Buildathon Fit and Constraints
+  ---------------------------------------------------------------------
+  Area                               Decision
+  ---------------------------------- ----------------------------------
+  Product surface                    Responsive website
 
-The official buildathon page says participants may bring any idea as long as voice is part of it, describes the event as virtual before the finale, and lists the project submission deadline as **31 October 2026**. The grand finale is listed for **20 November 2026** at Symphony in Bengaluru. Check the official page for any updates before submitting.
+  Framework                          Next.js App Router, React,
+                                     TypeScript
 
-- Buildathon page: https://www.bolna.ai/symphony/buildathon
-- Bolna web-call SDK: https://github.com/bolna-ai/web-call
-- Bolna API docs: https://www.bolna.ai/docs/api-reference/introduction
-- Bolna custom tool calling: https://www.bolna.ai/docs/tool-calling/custom-function-calls
+  Backend                            Next.js Route Handlers and Server
+                                     Actions
 
-### Buildathon alignment
+  Deployment                         Vercel
 
-| Buildathon expectation | Scribble response |
-|---|---|
-| Voice is a meaningful part of the product | Live spoken tutoring is the primary interaction loop. |
-| Build something real that can be demonstrated | A working browser app with worksheet upload, voice call, and dynamic written artifacts. |
-| Clear use of the voice platform | Bolna Web Call SDK connects the browser to the tutor agent; Bolna custom function calling invokes Scribble's tutoring backend. |
-| Understandable value proposition | Removes the upload/context-switching friction of asking AI about handwritten work. |
+  Authentication                     Firebase Authentication
 
-**Do not pitch “voice-enabled ChatGPT for math.”** Pitch the complete interaction: Scribble already has the notebook context, the student asks naturally, the spoken tutor responds, and the page updates alongside the explanation.
+  Database                           Cloud Firestore
 
----
+  File storage                       Firebase Storage, private and
+                                     access-controlled
+
+  Whiteboard                         React canvas implementation;
+                                     focused drawing library where
+                                     useful
+
+  PDF                                PDF.js via `react-pdf` or a
+                                     compatible maintained wrapper
+
+  Voice                              Bolna Web Call SDK; session
+                                     creation server-side
+
+  Vision/document understanding      Gemini or selected vision-capable
+                                     model via server-side adapter
+
+  Tutor reasoning                    One selected model provider behind
+                                     a server-side adapter
+
+  Equations                          KaTeX
+
+  Graphs                             Recharts or a small SVG/Canvas
+                                     plot component
+
+  Validation                         Zod
+
+  Tests                              Vitest, React Testing Library,
+                                     Playwright
+
+  Styling                            Tailwind CSS and a small component
+                                     system
+  ---------------------------------------------------------------------
+
+### Hard constraints
+
+-   All application code lives in one Next.js repository.
+-   No Python runtime, FastAPI, Express API server, or extension
+    deliverable.
+-   No provider secret in client bundles, `NEXT_PUBLIC_*`, local
+    storage, or source control.
+-   No arbitrary execution of model-generated code.
+-   No claim that a formula is verified unless a real check ran.
+-   No always-on microphone in the MVP; voice starts only after explicit
+    user action.
+
+Firebase, Bolna, and model APIs remain managed dependencies. They do not
+justify creating another application server.
 
 ## 3. Problem Statement
 
-### Current workflow
+A student stuck on a PDF or handwritten problem often has to stop, take
+a screenshot, switch apps, upload the image, explain the context, read
+the answer elsewhere, and manually copy useful parts back into their
+notes. Each follow-up repeats the process and loses context about the
+student's work.
 
-A student gets stuck on a handwritten math problem and has to:
+**User problem:** "I want to keep working on the page in front of me and
+ask for help without switching tools or rebuilding context."
 
-1. Stop writing.
-2. Take a screenshot or photograph.
-3. Transfer it to another device or open a chatbot.
-4. Upload the image.
-5. Explain what they are confused about.
-6. Read a response, return to the notebook, and repeat the cycle.
+Scribble makes the PDF, whiteboard, annotations, and tutor conversation
+one continuous workspace.
 
-This is high-friction, breaks concentration, and makes follow-up questions awkward. It also weakens the context: the AI may know the problem but not which line the student is questioning or which step they attempted.
+## 4. Users and Jobs to Be Done
 
-### User problem
+### Primary users
 
-> “I want to ask a question about the math in front of me without stopping my work to package the context for an AI tool.”
+-   High-school and university students studying mathematics or STEM.
+-   Self-directed learners using lecture notes, papers, textbooks, and
+    problem sets.
+-   Learners who think by writing and benefit from spoken explanations.
 
-### Product opportunity
+### Jobs
 
-Scribble combines a persistent worksheet context, conversational voice interaction, and visual math output in one workspace.
+-   Open and read a PDF inside the app.
+-   Annotate a PDF or work beside it on a whiteboard.
+-   Write equations and diagrams by hand.
+-   Ask why a step is valid.
+-   Get a hint without seeing the entire solution.
+-   Check a derivation or identify a likely mistake.
+-   Ask follow-up questions without repeating context.
+-   Generate equations, graphs, or explanations on the board.
+-   Save and revisit a study session.
 
----
+### Scenarios
 
-## 4. Target Users and Use Cases
+-   **Explain a step:** select a line in a PDF and ask why a theorem
+    applies.
+-   **Check work:** circle a derivative and ask whether it is correct;
+    the tutor asks for confirmation if handwriting is ambiguous.
+-   **Give a hint:** ask what to try next without revealing the
+    solution.
+-   **Work across surfaces:** read the problem in the PDF, solve it on
+    the board, and ask the tutor to compare the attempt with the
+    problem.
+-   **Visualize:** ask for a graph of a supported function and receive a
+    graph artifact.
 
-### Primary user
-
-A high-school, undergraduate, or self-directed learner working through written mathematics, calculus, algebra, linear algebra, signals and systems, probability, or similar STEM coursework.
-
-### Primary jobs to be done
-
-- Understand why a particular step is valid.
-- Get a hint without immediately seeing the complete answer.
-- Identify where their own derivation went wrong.
-- Ask follow-up questions without repeating the entire problem.
-- See a function or equation visualized as a graph.
-- Keep the written explanation next to the original worksheet.
-
-### Example scenarios
-
-**Concept clarification**  
-Student: “I don't remember what it means for a signal to be right-sided.”  
-Scribble: explains the concept using the current problem, then highlights why the condition matters.
-
-**Error detection**  
-Student: “Can you check my last two lines?”  
-Scribble: asks the student to select or confirm the relevant work if the app cannot identify it reliably, then points out a suspected algebraic error and explains it.
-
-**Step-by-step tutoring**  
-Student: “Don't solve the whole thing. Just tell me what I should do next.”  
-Scribble: provides one hint, waits for the student's attempt, and checks it.
-
-**Graphing**  
-Student: “Can you show me how this function behaves?”  
-Scribble: parses a supported function and renders a graph in the notebook workspace.
-
----
-
-## 5. Goals, Non-Goals, and Product Principles
+## 5. Goals, Non-Goals, Principles
 
 ### MVP goals
 
-1. Demonstrate a complete voice-first tutoring interaction using Bolna.
-2. Let users upload a worksheet image or PDF and establish it as persistent session context.
-3. Answer spoken questions in relation to the active worksheet.
-4. Display structured explanations and equations on the page while the voice conversation continues.
-5. Support at least one mathematically verifiable workflow, such as checking symbolic algebra, and one visual workflow, such as plotting a function.
-6. Be reliable enough to demo live from a browser without manual database edits or hidden operator steps.
+1.  Deliver a polished Next.js website with an interactive whiteboard.
+2.  Open, navigate, and annotate PDFs in-browser.
+3.  Let users ask contextual tutor questions by voice and text.
+4.  Ground answers in active PDF content, selected regions, board notes,
+    and recent turns.
+5.  Render structured answers, equations, highlights, and at least one
+    graphing/checking workflow.
+6.  Save and reopen sessions.
+7.  Demo the complete loop without manual database edits.
+8.  Keep all Scribble application logic in one Next.js codebase.
 
-### Non-goals for the submission MVP
+### Non-goals
 
-- A full learning management system, teacher dashboard, or classroom administration suite.
-- Support for every subject, every notation system, every language, or every handwriting style.
-- Perfect OCR on arbitrary low-quality notebook photographs.
-- Unsupervised solving of every possible handwritten derivation.
-- Native iOS/Android applications or a browser extension.
-- An always-on microphone that records ambient room audio without a deliberate session start.
-- A custom-trained handwriting generation model.
-- Multi-agent orchestration unless it solves a measured problem.
+-   Chrome extension, separate Python/FastAPI backend, or Express
+    server.
+-   LMS, teacher dashboard, or classroom administration.
+-   Perfect OCR for all handwriting and scans.
+-   Native mobile apps or real-time collaboration.
+-   Unrestricted PDF source editing.
+-   Custom handwriting-generation model.
+-   Always-on ambient recording or wake-word detection.
+-   Autonomous execution of arbitrary LLM-generated code.
+-   Multi-agent orchestration without a measured need.
 
-### Product principles
+### Principles
 
-- **Context once, questions many:** a worksheet should not need to be re-uploaded for every turn.
-- **Teach before telling:** default to hints, reasoning, and one step at a time.
-- **Math must be checked:** use symbolic/numeric tools where practical instead of trusting generated algebra blindly.
-- **Make uncertainty visible:** if handwriting is ambiguous, ask for confirmation instead of silently guessing.
-- **Voice with consent:** show when the microphone is active and provide visible mute/end controls.
-- **No fake capabilities:** distinguish parsed work from confirmed work and generated suggestions from verified results.
+-   **One workspace:** reading, writing, asking, and reviewing happen
+    together.
+-   **Context once, questions many:** no repeated uploads for
+    follow-ups.
+-   **Teach before telling:** default to hints and reasoning.
+-   **Visible agency:** show what the agent is doing and changing.
+-   **User control:** suggested artifacts can be inserted, moved, or
+    dismissed.
+-   **Visible uncertainty:** ambiguous handwriting triggers
+    clarification.
+-   **Math must be checked:** otherwise label the result unverified.
+-   **Voice with consent:** visible microphone state, mute, and end
+    controls.
+-   **No fake capabilities:** never claim a save, read, selection, or
+    check succeeded unless it did.
 
----
+## 6. MVP Feature Priorities
 
-## 6. MVP Feature Set and Priorities
+### P0 --- Must ship
 
-Use MoSCoW prioritization to protect the deadline.
+#### F-01: Session and workspace
 
-### P0 — Must ship
+-   Landing page actions: New whiteboard, Open PDF, Continue studying.
+-   Stable session ID, title, save state, empty/loading/error states.
+-   Reload restores the last successfully saved session.
 
-#### F-01: Worksheet upload
-- Accept PNG, JPG/JPEG, and PDF.
-- Show upload progress and a preview.
-- Enforce a clear size limit (suggested starting point: 10 MB per file).
-- Store the original file privately; issue a short-lived signed URL or serve through an authorized backend route.
-- Create a `worksheet_id` and attach it to a `scribble_session_id`.
+#### F-02: Whiteboard
 
-**Acceptance criteria**
-- A student can upload a representative worksheet in under 30 seconds on a normal connection.
-- Unsupported formats and failed uploads show an actionable error.
+-   Large scrollable canvas with optional grid/paper background.
+-   Pen, eraser, selection, undo, redo, pan, zoom.
+-   Pen color and stroke width.
+-   Text notes and tutor-generated equation/note/graph artifacts.
+-   Distinguish user content from agent-created artifacts.
+-   Move/delete AI artifacts without altering user strokes.
 
-#### F-02: Problem extraction and confirmation
-- Extract visible problem text and mathematical expressions from the uploaded page.
-- Display the extracted problem and let the student correct it before asking for help.
-- Store the confirmed text and any parsed LaTeX/expression representation.
-- Record parse confidence and mark ambiguous segments.
+**Acceptance:** pointer/touch input works in supported browsers;
+undo/redo is predictable; board state persists.
 
-**Acceptance criteria**
-- A user can edit incorrect OCR before starting a tutoring conversation.
-- Ambiguous symbols (such as `1`/`l`, `x`/`×`, or missing exponent placement) are not silently treated as certain.
+#### F-03: PDF viewer
 
-#### F-03: Live voice tutor powered by Bolna
-- Integrate `@bolna/web-call` in the browser.
-- Request a short-lived web-call session from the server; never expose the Bolna API key in client code.
-- Provide clear `Start voice`, `Mute`, and `End session` controls.
-- Show connection states: idle, connecting, active, reconnecting/error, ended.
-- Keep the active worksheet and tutoring preferences available to the agent through session context.
+-   Upload PDF and render it using PDF.js.
+-   Page navigation, zoom, fit-width, fit-page.
+-   Text selection when the PDF has a text layer.
+-   Loading, password-protected, unsupported, and rendering-error
+    states.
+-   Reasonable multi-page support.
 
-**Acceptance criteria**
-- A student can start a browser voice conversation and hear the agent respond.
-- Microphone denial, connection failures, and session expiration have useful recovery messages.
-- Ending the session releases the microphone and terminates the call.
+**Acceptance:** navigation does not leave the workspace; rendering does
+not freeze the entire app; invalid files fail safely.
 
-#### F-04: Worksheet-aware tutor tool
-- Configure a Bolna custom function, e.g. `tutor_turn`, that calls a public HTTPS endpoint in Scribble's backend.
-- Provide the current session identifier to the function through Bolna context variables.
-- Pass the user's requested action/question as structured input.
-- Resolve worksheet context on the server rather than trusting worksheet text sent from the client on every turn.
-- Persist the structured response so the web UI can retrieve it independently of the spoken response.
+#### F-04: PDF annotations and focus selection
 
-**Acceptance criteria**
-- A voice question can trigger the tutor endpoint and return a spoken-friendly explanation.
-- The web workspace receives the same turn's structured response through polling or SSE.
-- The agent does not repeatedly ask for the worksheet if an active, confirmed worksheet already exists.
+-   Freehand ink and highlights over the displayed PDF.
+-   Store annotation geometry relative to the page, not viewport pixels.
+-   Select text/regions and ask about them.
+-   Annotations are overlays; do not claim to alter original PDF bytes.
+-   Persist annotations by document and page.
 
-#### F-05: Notebook workspace and answer artifacts
-- Show the worksheet beside a notebook-like answer surface.
-- Render readable explanatory text, numbered steps, and equations.
-- Make the newest response easy to distinguish from older work.
-- Preserve the original worksheet and extracted problem context while the student asks follow-ups.
+**Acceptance:** annotations stay aligned after zoom/reload; the tutor
+receives page and selection metadata; ambiguous selections trigger
+clarification.
 
-**Acceptance criteria**
-- The response appears in the UI without requiring the student to manually refresh.
-- Equations are readable on desktop presentation size and do not overflow the workspace.
+#### F-05: Voice and text tutor
 
-#### F-06: Tutor behavior
-- Support at least three intent classes: `explain_concept`, `give_hint`, and `check_work`.
-- Maintain the current worksheet context for follow-up turns.
-- Ask a clarification question when a reference such as “this line” is ambiguous.
-- Never claim the student's work was checked if no work was supplied or identified.
+-   `Start voice`, `Mute`, `End session`.
+-   Bolna Web Call for live voice.
+-   Typed question fallback in the same workspace.
+-   Connection states: idle, connecting, active, reconnecting/error,
+    ended.
+-   Visible microphone-active indicator and cleanup on end/unmount.
+-   Voice starts only after an explicit user gesture.
 
-#### F-07: Graphing a supported expression
-- Accept a function/expression explicitly supplied or extracted with sufficient confidence.
-- Validate/normalize it on the backend and generate plot data.
-- Render the plot in the frontend with axes, grid, labels, and a visible expression.
+**Acceptance:** spoken question gets an audible response;
+microphone/network failures have recovery actions; typed fallback always
+remains available.
 
-**Acceptance criteria**
-- At least common single-variable functions can be plotted.
-- Invalid or unsupported expressions produce a safe, understandable error instead of arbitrary code execution.
+#### F-06: Agentic tools
 
-#### F-08: Demo-quality fallback
-- Provide one preloaded sample worksheet so the product is demonstrable if OCR fails.
-- Include a typed-question fallback for microphone or network issues, without presenting it as the main experience.
-- Seed at least three demo prompts: “Explain this step,” “Give me a hint,” and “Plot this function.”
+Initial allowlisted tools: - `get_active_context` -
+`explain_selection` - `give_hint` - `check_work` -
+`create_board_artifact` - `plot_expression` - `highlight_region` -
+`save_session`
 
-### P1 — Should ship if P0 is stable
+Tools execute only in Next.js server code. Model arguments are
+schema-validated; the model cannot invent endpoints or call arbitrary
+URLs.
 
-- Select a line or region of the worksheet to focus the tutor's attention.
-- Render suspected mistakes with a marker and a short explanation.
-- A “hint / explain / solve” tutoring mode selector.
-- A playful but opt-in “roast my mistake” tone that never insults the learner personally.
-- Session history for the current browser session.
-- A clear “copy solution” or “export notes” action.
+**Acceptance:** at least three useful actions work end-to-end; tool
+execution is visible; failures do not masquerade as success.
 
-### P2 — Stretch / after submission
+#### F-07: Structured answer artifacts
 
-- Wake phrase such as “Hey Scribble” while a voice session is active.
-- Wake-word or voice activity detection with robust interruption behavior.
-- Automatically tracking a pen/stylus cursor or understanding arbitrary “this bit” references.
-- Personalized imitation of the student's handwriting.
-- Native apps, tablet/stylus integrations, classroom tools, and multi-user sessions.
-- Multiple languages and curriculum-specific knowledge.
+-   Explanation cards, ordered steps, hints, equations, graph results,
+    and clarification prompts.
+-   KaTeX equation rendering.
+-   Insert answers onto the board.
+-   Short spoken answer, detailed visual artifact.
+-   Verification labels: `verified`, `unverified`, `failed`,
+    `not_applicable`.
 
-**Scope warning:** Do not start with true background ambient listening. A user-initiated voice session with explicit mic state is safer, easier to debug, and enough to prove the voice-first value. Keep always-on / wake-word behavior as a stretch feature unless a proven, low-latency implementation is already available.
+**Acceptance:** equations render without overflow; voice and visual
+artifact derive from one structured result.
 
----
+#### F-08: Document understanding
 
-## 7. UX and Information Architecture
+-   Extract text from text-based PDFs.
+-   For scans/handwriting, optionally call a vision model from a Next.js
+    server route.
+-   Start with the active page or selected region, not full-document
+    ingestion.
+-   Allow correction before ambiguous content becomes confirmed context.
+-   Keep extracted text separate from generated answers.
 
-### Main screen: Notebook Workspace
+#### F-09: Persistence
 
-Recommended desktop layout:
+-   Save session metadata, board elements, PDF metadata, annotations,
+    and turns.
+-   Debounced autosave with saving/saved/error state.
+-   Keep PDFs in private storage.
+-   Check ownership on every read/write.
+-   Retry failed saves visibly.
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ Scribble logo     Worksheet name / status              Voice: ● Active   │
-├──────────────────────────────┬───────────────────────────────────────────┤
-│                              │  Scribble's explanation                   │
-│  WORKSHEET                   │                                           │
-│  - page image/PDF preview    │  Step 1: ...                              │
-│  - extracted problem         │  Equation: ...                            │
-│  - select/highlight region   │  Graph / mistake marker / hint             │
-│                              │                                           │
-├──────────────────────────────┴───────────────────────────────────────────┤
-│  [Start voice] [Mute] [End]   “Ask about the problem you're working on”  │
-│  Optional fallback: [Type a question…]                        [Send]     │
-└──────────────────────────────────────────────────────────────────────────┘
+#### F-10: Demo fallbacks
+
+-   Sample PDF and pre-populated example board.
+-   Typed fallback for voice failure.
+-   Prompt chips: Explain this step, Give me a hint, Check my work, Plot
+    this function.
+-   Demo reset must not destroy a user's real session.
+
+### P1 --- If P0 is stable
+
+-   Export board as PNG/PDF.
+-   Search text-based PDFs.
+-   Drag a PDF excerpt onto the board.
+-   Highlight likely mistakes.
+-   Session history, rename, keyboard shortcuts.
+-   Multiple board backgrounds, image import, page thumbnails.
+-   Hint/explain/solve mode selector.
+
+### P2 --- Stretch
+
+-   Handwriting-to-LaTeX for board regions.
+-   Generated handwriting that mimics a student's style.
+-   Wake phrase while a voice session is active.
+-   Cross-document references, multiple specialist agents,
+    collaboration.
+-   Advanced proof checking and tablet stylus optimization.
+
+**Scope warning:** A reliable PDF + board + one useful voice/agent loop
+beats ten incomplete features. Do not build wake-word detection,
+multi-agent orchestration, or handwriting imitation before the core loop
+works.
+
+## 7. Information Architecture and UX
+
+### Screens
+
+1.  Landing --- value proposition, New whiteboard, Open PDF, Continue.
+2.  Workspace --- PDF, whiteboard, tools, tutor panel.
+3.  Session history --- reopen, rename, delete.
+4.  Settings --- account, privacy, voice preferences, data deletion.
+
+### Workspace layout
+
+``` text
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Scribble  [Session title]  Saved ✓                  [Voice: Idle] [Settings]│
+├────────────────────────────────────────────────────────────────────────────┤
+│ PDF controls             Whiteboard tools                 Tutor / Context  │
+│ ┌─────────────────────┐ ┌──────────────────────────┐ ┌───────────────────┐ │
+│ │ PDF page             │ │ Whiteboard               │ │ Ask Scribble      │ │
+│ │ text / highlights    │ │ pen / equations / notes  │ │ explanation       │ │
+│ │ annotations          │ │ tutor artifacts / graphs │ │ steps / history   │ │
+│ └─────────────────────┘ └──────────────────────────┘ │ [Type a question] │ │
+│                                                       │ [Start voice]     │ │
+│                                                       └───────────────────┘ │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Screen states
+Use resizable panels on desktop. On narrow screens, use tabs or
+collapsible panels instead of compressing all surfaces.
 
-1. **Welcome / empty workspace** — one obvious action to upload a worksheet; also offer a sample worksheet.
-2. **Processing** — page preview is visible, extraction progress appears, no false claim that parsing is complete.
-3. **Confirm problem** — extracted question, editable text, ambiguity indicators, “Use this problem” action.
-4. **Ready** — worksheet preview + notebook panel + “Start voice” action.
-5. **Voice connecting** — visible connection state and microphone permission instructions.
-6. **Voice active** — active mic indicator, mute/end controls, visible transcript/turn state if available through the implemented integration; do not invent a transcript feed if the SDK integration does not expose it.
-7. **Tutor working** — show an unobtrusive indicator while math analysis runs.
-8. **Answer updated** — explanation, equations, graph, or mistake annotation appears in the workspace.
-9. **Recoverable error** — retry, re-upload, or use typed question.
+### Controls
 
-### Interaction rules
+-   **Top bar:** logo, session title, save state, file/page, voice
+    state, settings.
+-   **PDF toolbar:** open/replace, page navigation, zoom, fit, select,
+    pen, highlighter, eraser.
+-   **Board toolbar:** pen, eraser, selection, text, undo/redo,
+    color/width, zoom/pan, grid, insert artifact, export.
+-   **Tutor panel:** conversation, prompt chips, typed input, voice
+    controls, active-context indicator, agent status, artifact preview.
 
-- Voice start must follow a deliberate click/tap so browser audio playback and microphone permission can be handled correctly.
-- The microphone state must remain visible while the voice session is active.
-- When a tutor turn creates an artifact, it should appear without interrupting the voice response.
-- Keep the upload, question confirmation, and voice initiation actions obvious; avoid onboarding tours for the demo.
-- The “roast” behavior, if implemented, should be mild, optional, and aimed at the mathematical mistake—not the student's intelligence or identity.
+### States
 
----
+Empty session; upload progress; PDF ready; board ready; extraction in
+progress; extraction needs confirmation; tutor idle; voice
+connecting/active; tool running; artifact ready; saving/saved/save
+failed; recoverable provider/network error.
 
-## 8. Functional Requirements in Detail
+### UX rules
 
-### Worksheet parsing pipeline
+-   Keep the user's board visible while the tutor responds.
+-   Selection visibly updates the tutor's context indicator.
+-   Never automatically perform destructive edits; ask before
+    replacing/clearing content.
+-   New artifacts are previewable and undoable.
+-   Preserve PDF page and board viewport during follow-ups.
+-   Use concise status messages; avoid onboarding tours.
 
-1. Receive upload and validate file type/size.
-2. Save original asset and create worksheet record.
-3. For PDFs, extract embedded text if available and render page images where needed.
-4. Send selected page(s) to a vision-capable model or dedicated math OCR service.
-5. Request structured output: problem text, expressions/LaTeX, detected variables, page regions if supported, confidence, and ambiguity notes.
-6. Validate that model output matches the expected schema.
-7. Save parsed output as `unconfirmed`.
-8. Let the student correct the problem statement.
-9. Mark it `confirmed` and attach it to the active session.
+## 8. Functional Design
 
-Avoid implementing a complex full-document ingestion platform. For the demo, support a single worksheet page well and make multi-page PDFs a best-effort path.
+### 8.1 Board state model
 
-### Tutor response pipeline
+Store structured elements, not a screenshot.
 
-1. Bolna agent hears the student's question during an active voice session.
-2. The agent decides whether to call the custom `tutor_turn` function.
-3. The custom function sends `session_id`, `intent`, `question`, and optional focus metadata to Scribble's backend.
-4. Backend loads the confirmed worksheet context and recent turns.
-5. The tutor planner creates a structured candidate response.
-6. Math validator runs when a symbolic expression, calculation, or plot is involved.
-7. The backend stores the response turn and emits an event for the frontend.
-8. The API returns a concise `spoken_response` and a compact `artifact_summary` to Bolna.
-9. Bolna continues the conversation naturally using the tool result.
-10. The frontend receives the complete structured artifact by polling or SSE and renders it in the notebook.
+Element types: `stroke`, `text`, `equation`, `graph`, `image`,
+`tutor_note`, `highlight`.
 
-**Important separation:** Bolna is responsible for live audio conversation and speaking the response. Scribble's backend is responsible for worksheet-grounded tutoring, math checks, artifact generation, persistence, and UI updates.
+Common fields: - `id`, `type`, `x`, `y`, optional `width`, `height`,
+`zIndex` - `createdAt`, `updatedAt` - `source: user | agent` -
+type-specific content/metadata
 
-### Tutor response schema
+Store strokes in board-space coordinates. Zoom/pan changes the viewport
+transform, not the underlying stroke coordinates.
 
-Use a validated Pydantic model similar to:
+### 8.2 PDF rendering and annotations
 
-```json
+-   PDF.js renders pages in the browser.
+-   Annotation overlay is a separate layer aligned to each page.
+-   Store coordinates normalized to page dimensions or in a documented
+    PDF coordinate system.
+-   Track page number and document version.
+-   Do not modify the original PDF in place.
+-   If export is implemented, create a new annotated copy and label it
+    as an export.
+
+For scans: render the active page/region, call the vision provider,
+request structured text/LaTeX plus uncertainty notes, allow correction,
+then use confirmed content for tutor turns.
+
+### 8.3 Context assembly
+
+Send bounded, relevant context, not the entire session every time: 1.
+Current question. 2. Explicitly selected PDF text/region. 3. Active page
+text and page number. 4. Relevant board elements and selected strokes.
+5. Confirmed problem statement/equations. 6. Recent turns. 7. Tutor
+mode/preferences.
+
+If freehand strokes are not transcribed, do not pretend the tutor
+understands them. Ask the user to select the region and confirm the
+recognized expression.
+
+### 8.4 Agent turn pipeline
+
+1.  User submits text or speaks in an active Bolna call.
+2.  Next.js creates a turn with a stable `turnId` and idempotency key.
+3.  Server loads authorized session and active context.
+4.  Model chooses an intent and, if needed, an allowlisted tool.
+5.  Zod validates arguments.
+6.  The tool executes with session-scoped authorization.
+7.  Tool result is added to context.
+8.  Tutor generates structured response and concise spoken text.
+9.  Supported math checks run.
+10. Turn and proposed artifact are persisted.
+11. UI receives result and shows a preview.
+12. User inserts, moves, or dismisses the artifact.
+13. Bolna speaks the concise answer for voice-originated turns.
+
+### 8.5 Example response schema
+
+``` json
 {
-  "turn_id": "uuid",
-  "intent": "explain_concept",
-  "spoken_response": "A right-sided signal is zero before its starting point...",
+  "turnId": "uuid",
+  "intent": "explain_selection",
+  "spokenResponse": "The chain rule applies because one function is inside another.",
   "artifact": {
     "type": "steps",
-    "title": "Why the signal is right-sided",
+    "title": "Why the chain rule applies",
     "steps": [
-      {"text": "Check where the signal becomes non-zero.", "latex": "x(t)=0,\\quad t<0"},
-      {"text": "A right-sided signal is zero for all times before the origin.", "latex": "x(t)=0\\;\\text{for }t<0"}
-    ],
-    "graph": null,
-    "annotations": []
+      {"text": "Identify the outer function.", "latex": "f(u)=u^2"},
+      {"text": "Identify the inner function.", "latex": "u=3x+1"},
+      {"text": "Multiply the derivatives.", "latex": "\\frac{d}{dx}(3x+1)^2=2(3x+1)\\cdot3"}
+    ]
   },
-  "verification": {
-    "status": "not_applicable",
-    "notes": []
-  },
-  "clarification_required": false,
-  "created_at": "ISO-8601 timestamp"
+  "verification": {"status": "not_applicable", "notes": []},
+  "clarificationRequired": false
 }
 ```
 
-This is an example of the application schema, not a guaranteed answer from any particular model. Validate all incoming and generated structures.
-
----
+This is a schema example, not a guaranteed model response. Validate
+before rendering or saving.
 
 ## 9. Technical Architecture
 
-### Recommended stack for the deadline
+### 9.1 Architecture overview
 
-| Layer | Choice | Reason |
-|---|---|---|
-| Frontend | Next.js + React + TypeScript | Fast iteration, client components for voice, simple production deployment. |
-| UI | Tailwind CSS + a small component library | Consistent layout without spending the deadline on styling infrastructure. |
-| Voice | `@bolna/web-call` WebRTC SDK | Browser-to-Bolna voice conversation; server-minted short-lived session. |
-| App backend | FastAPI + Python | Math processing, model integration, schema validation, and custom tool endpoint. |
-| Persistence | Supabase Postgres or managed Postgres | Store sessions, worksheet state, turns, and generated artifacts. |
-| File storage | Supabase Storage or compatible private object storage | Worksheet images/PDFs with access controls. |
-| Math rendering | KaTeX or MathJax | Render LaTeX equations in the workspace. |
-| Symbolic math | SymPy | Safe parsing of a limited math grammar, symbolic simplification, and verification. |
-| Graphs | Plotly.js or Recharts/custom SVG | Interactive function visualization from backend-generated data. |
-| OCR / vision | Pluggable vision model or math OCR provider | Convert worksheet image to editable problem text and LaTeX. Keep provider replaceable. |
-| Hosting | Vercel for frontend; a managed Python host for FastAPI | Separate frontend and math/tool backend with public HTTPS endpoints. |
-
-Use the provider the team can configure and test quickly. The architecture should not require training a model. Keep model credentials in server environment variables.
-
-### System diagram
-
-```mermaid
+``` mermaid
 flowchart TD
-    U[Student] --> UI[Next.js Notebook Workspace]
-    UI --> UP[Upload API]
-    UP --> FS[Private File Storage]
-    UP --> PARSE[Worksheet Parser / Vision OCR]
-    PARSE --> DB[(Postgres)]
-    UI -->|Start voice| SESSION[Session Mint Endpoint]
-    SESSION -->|API key server-side| BOLNA[Bolna Web Call / Voice Agent]
-    BOLNA <-->|Live audio via WebRTC| UI
-    BOLNA -->|Custom function: tutor_turn| TOOL[FastAPI Tutor Tool Endpoint]
-    TOOL --> CTX[Load worksheet + recent turns]
-    CTX --> LLM[Tutor Reasoning / Structured Output]
-    LLM --> VALID[Math Validator: SymPy]
-    VALID --> DB
-    VALID -->|Turn event| STREAM[SSE or short polling]
-    STREAM --> UI
-    VALID -->|spoken_response + summary| BOLNA
-    UI --> GRAPH[Render equations, steps, graph, annotations]
+    U[Student Browser] --> NEXT[Next.js App Router]
+    NEXT --> UI[React Workspace UI]
+    NEXT --> API[Route Handlers / Server Actions]
+    UI --> BOARD[Whiteboard Canvas]
+    UI --> PDF[PDF.js Viewer + Annotation Overlay]
+    UI --> VOICE[Bolna Web Call SDK]
+    API --> AUTH[Firebase Auth Verification]
+    API --> DB[(Firestore)]
+    API --> STORE[Firebase Storage]
+    API --> AGENT[Agent Orchestrator in Next.js]
+    AGENT --> MODEL[Vision / Tutor Model API]
+    AGENT --> TOOLS[Allowlisted Server Tools]
+    TOOLS --> DB
+    TOOLS --> MATH[Safe Math Validation / Plot Data]
+    API --> BOLNA[Bolna Session API]
+    VOICE <-->|Live audio| BOLNA
+    AGENT --> DB
+    DB --> UI
 ```
 
-### Components and responsibilities
+### 9.2 What lives in Next.js
 
-#### 9.1 Frontend (Next.js)
+-   Pages, layouts, loading states, and error boundaries.
+-   Whiteboard and PDF workspace components.
+-   Authentication-aware server components.
+-   Route Handlers for uploads, sessions, tutor turns, voice-session
+    creation, and provider callbacks.
+-   Server Actions for suitable authenticated mutations.
+-   Provider adapters for Bolna and model APIs.
+-   Agent orchestration and tool dispatch.
+-   Schema validation, authorization, rate limits, and error
+    normalization.
+-   Firestore and Firebase Storage access.
+-   Persistence and autosave coordination.
 
-- Upload page and notebook workspace.
-- Client-side `BolnaWebCall` lifecycle and state.
-- Controls: start, mute, end, upload, confirm parsed problem, type fallback.
-- Rendering of structured tutor artifacts.
-- Polling/SSE subscription for new turns and updates.
-- User/session IDs; no provider secrets.
+External providers supply managed capabilities only. There is no
+separately deployed Scribble backend.
 
-#### 9.2 Voice session endpoint
+### 9.3 Suggested repository structure
 
-- Verifies the app session or rate-limit token.
-- Calls Bolna's web-call session mint endpoint from the server.
-- Returns the minted short-lived session to the browser without exposing `BOLNA_API_KEY`.
-- Supplies the `agent_id` and session context/user data needed by the configured agent.
-- Rejects requests if required configuration is missing.
-
-The Bolna web-call SDK documentation explicitly advises that the API key must not be embedded in a web page; it describes the server minting a short-lived session for the browser. Follow that pattern exactly.
-
-#### 9.3 FastAPI tutoring backend
-
-- Upload validation and parsing orchestration.
-- Worksheet/session records.
-- Bolna custom function target endpoint.
-- Tutor prompt and structured model response generation.
-- Math validation and graph-data generation.
-- Turn persistence and frontend event delivery.
-- Rate limiting, input validation, logging, and error normalization.
-
-#### 9.4 Worksheet parser
-
-Return structured data, not free-form prose. Suggested result:
-
-```json
-{
-  "problem_text": "Determine whether x(t) is right-sided...",
-  "expressions": ["x(t) = e^{-t}u(t)"],
-  "latex": ["x(t)=e^{-t}u(t)"],
-  "variables": ["t"],
-  "ambiguities": [
-    {"text": "u(t)", "reason": "The handwritten symbol may be u(t) or v(t)."}
-  ],
-  "confidence": 0.82
-}
+``` text
+scribble/
+├── app/
+│   ├── (marketing)/page.tsx
+│   ├── (app)/layout.tsx
+│   ├── (app)/sessions/page.tsx
+│   ├── (app)/sessions/[sessionId]/page.tsx
+│   ├── (app)/settings/page.tsx
+│   └── api/v1/
+│       ├── sessions/route.ts
+│       ├── sessions/[sessionId]/route.ts
+│       ├── sessions/[sessionId]/board/route.ts
+│       ├── sessions/[sessionId]/turns/route.ts
+│       ├── documents/route.ts
+│       ├── documents/[documentId]/route.ts
+│       ├── documents/[documentId]/extract/route.ts
+│       ├── tutor/turn/route.ts
+│       ├── voice/session/route.ts
+│       └── webhooks/bolna/route.ts
+├── components/workspace/
+│   ├── workspace-shell.tsx
+│   ├── workspace-header.tsx
+│   ├── resizable-panels.tsx
+│   ├── whiteboard/whiteboard.tsx
+│   ├── whiteboard/board-toolbar.tsx
+│   ├── whiteboard/board-element.tsx
+│   ├── pdf/pdf-viewer.tsx
+│   ├── pdf/pdf-toolbar.tsx
+│   ├── pdf/annotation-layer.tsx
+│   ├── tutor/tutor-panel.tsx
+│   ├── tutor/question-input.tsx
+│   ├── tutor/voice-controls.tsx
+│   └── tutor/artifact-preview.tsx
+├── lib/
+│   ├── auth/firebase-client.ts
+│   ├── auth/firebase-admin.ts
+│   ├── db/sessions.ts
+│   ├── db/documents.ts
+│   ├── db/turns.ts
+│   ├── providers/bolna.ts
+│   ├── providers/tutor-model.ts
+│   ├── providers/vision-model.ts
+│   ├── agent/orchestrator.ts
+│   ├── agent/context-builder.ts
+│   ├── agent/tool-registry.ts
+│   ├── agent/tools/
+│   ├── math/safe-expression.ts
+│   ├── math/graph-data.ts
+│   ├── schemas/
+│   ├── storage.ts
+│   ├── rate-limit.ts
+│   └── errors.ts
+├── types/
+├── tests/{unit,integration,e2e}/
+├── public/demo/
+├── .env.example
+├── package.json
+└── README.md
 ```
 
-Confidence thresholds should be calibrated against a small sample rather than treated as universal. For low confidence, ask the user to edit or confirm the expression.
+This is a target structure, not a requirement to create every file on
+day one. Implement only the pieces needed for the first vertical slice.
 
-#### 9.5 Math validation layer
+### 9.4 Server/client boundaries
 
-The language model explains; deterministic tools validate where possible.
+**Client components:** canvas pointer events, PDF rendering and
+annotation overlays, voice SDK lifecycle, panel resizing, local viewport
+state, optimistic board edits.
 
-- Normalize expressions using a limited supported syntax.
-- Parse with a safe symbolic parser and strict function allowlist.
-- Use SymPy for simplification, substitution, symbolic equality, derivatives/integrals if supported, and numerical spot checks.
-- For generated solutions, compare equivalent expressions where possible.
-- If validation cannot establish correctness, mark the result `unverified`; do not label it “verified.”
-- Never run model-generated Python code with `eval`, `exec`, or an unrestricted shell.
+**Server components / Route Handlers:** session authorization, Firebase
+Admin operations, provider API calls, tool dispatch, document extraction
+requests, file access control, tutor-turn persistence.
 
-#### 9.6 Graphing
+Keep Firebase Admin and provider secrets out of client components. Load
+browser-only PDF/canvas libraries through client components and dynamic
+imports where needed.
 
-- Accept a constrained expression grammar (e.g. `sin(x)`, `x**2`, `exp(-x)`).
-- Convert to a validated symbolic expression.
-- Define a bounded x-range; cap points and reject invalid domains or non-finite values.
-- Return arrays of numeric points and metadata.
-- Render on the client using a graph component.
-- Do not evaluate arbitrary code or accept raw executable expressions.
+## 10. Next.js API Contracts
 
----
-
-## 10. Bolna Integration Design
-
-### Voice transport
-
-Use the current `@bolna/web-call` package:
-
-```bash
-npm install @bolna/web-call
-```
-
-The browser initializes `BolnaWebCall` with a server endpoint such as `/api/bolna-session` (or a corresponding authenticated FastAPI route). Start the call from a user click. Register `state-change`, `call-start`, `call-end`, `error`, and `volume-level` handlers as supported by the selected SDK version. On component unmount, page close, or explicit end, stop the call and release audio resources.
-
-**Do not expose the Bolna API key in a `NEXT_PUBLIC_*` variable or ship it in JavaScript.**
-
-### Server-side mint endpoint
-
-Conceptual Next.js route handler; adapt to the team's actual app structure and current Bolna API contract:
-
-```ts
-// app/api/bolna-session/route.ts
-import { NextResponse } from "next/server";
-
-export async function POST() {
-  const apiKey = process.env.BOLNA_API_KEY;
-  const agentId = process.env.BOLNA_AGENT_ID;
-  if (!apiKey || !agentId) {
-    return NextResponse.json({ error: "Voice service is not configured" }, { status: 503 });
-  }
-
-  const response = await fetch("https://api.bolna.ai/web-call/freeswitch-session", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ agent_id: agentId }),
-    cache: "no-store",
-  });
-
-  const payload = await response.json();
-  return NextResponse.json(payload, { status: response.status });
-}
-```
-
-Before deploying, add app/session authentication and rate limiting to this route, and verify the exact request/response contract against Bolna's current SDK version. The sample above is an integration pattern, not a complete production auth implementation.
-
-### Agent configuration
-
-Create a Bolna agent configured as a **patient, conversational math tutor**. Configure a custom function that points to Scribble's HTTPS backend endpoint.
-
-Suggested tool: `tutor_turn`
-
-- **Description:** Use when the student asks about the uploaded worksheet, requests a hint or conceptual explanation, wants work checked, asks for the next step, or requests a supported graph. Call this tool whenever a response needs worksheet context or generated math artifacts; do not guess at unclear handwritten expressions.
-- **Inputs:** `scribble_session_id`, `question`, `intent`, optional `focus_text`/`expression`.
-- **Output:** `spoken_response`, `turn_id`, and a brief `artifact_summary`.
-- **Pre-call message:** “Let me check that step.” Keep it short so the delay feels intentional.
-- **Authentication:** configure a backend token/header as supported by Bolna's custom function settings. Validate the token on every call. Do not leave the custom tool publicly callable without protection.
-- **Context:** inject the active Scribble session identifier as a prompt/context variable when the call session is created, using the current Bolna variable syntax. Confirm exact formatting against the official schema reference before implementation.
-
-Bolna's documentation describes custom functions as API calls made during live conversations, with the tool response fed back to the agent. This lets the tutor speak a grounded result while Scribble separately persists and renders the complete artifact.
-
-### Suggested tutor system prompt
-
-```text
-You are Scribble, a patient, concise AI math tutor speaking to a student who is working on a worksheet.
-
-The current worksheet and session context are available through Scribble's tutor tool. Do not invent worksheet content. If the student refers to an ambiguous line, ask them to select it or clarify what they mean.
-
-Your goal is learning, not merely answer delivery:
-- Start with a short, natural spoken explanation.
-- When appropriate, ask one guiding question or provide one next step before revealing a complete solution.
-- Respect requests such as “give me a hint” or “explain the concept.”
-- Use the tutor_turn tool for worksheet-specific questions, checking work, calculations, and graph requests.
-- Never claim a derivation is verified unless the tool says it passed validation.
-- If the OCR/parser reports uncertainty, ask the student to confirm the expression.
-- Avoid long spoken equations. Say the key idea aloud; Scribble will show full equations in the notebook.
-- Be warm and lightly playful, but never shame the student. Roasting is opt-in and should target the mathematical mistake, not the person.
-- If a request is unsupported, explain that briefly and offer the closest supported action.
-```
-
-### Voice UX constraints
-
-- Web voice requires browser microphone permission and a compatible network.
-- Start audio from a deliberate user gesture.
-- Provide a mute control and a clearly visible active microphone indicator.
-- Do not claim to have implemented an exposed transcript stream unless the selected SDK/event integration really makes it available; the MVP can retrieve structured turn artifacts from Scribble's own backend.
-- Implement reconnect/retry using a fresh session if the minted session expires or connection fails.
-- Use headphones for the live pitch if possible to reduce acoustic echo.
-
----
-
-## 11. API Contract
-
-Version all routes under `/api/v1`. Exact deployment prefixes can change; keep the contracts stable.
+Every endpoint below is implemented in `app/api/**/route.ts`. Use
+consistent JSON errors and authenticated session checks.
 
 ### `POST /api/v1/sessions`
-Create a Scribble session.
 
-**Response**
-```json
+Create a study session.
+
+``` json
 {
-  "session_id": "uuid",
-  "status": "created"
+  "sessionId": "uuid",
+  "title": "Untitled study session",
+  "status": "active"
 }
 ```
 
-### `POST /api/v1/sessions/{session_id}/worksheets`
-Upload a worksheet (multipart form data).
+### `GET /api/v1/sessions/:sessionId`
 
-**Response**
-```json
+Return session metadata, active document/page, save state, and board
+metadata after checking ownership.
+
+### `PATCH /api/v1/sessions/:sessionId`
+
+Update title, active page, active document, or tutor preferences.
+
+### `POST /api/v1/documents`
+
+Accept a PDF using multipart form data. Validate MIME type, file
+signature, size, and page count. Store it privately and create a
+document record.
+
+``` json
+{"documentId":"uuid","status":"ready","pageCount":12}
+```
+
+### `GET /api/v1/documents/:documentId`
+
+Return authorized document metadata and an access-controlled
+preview/download URL.
+
+### `POST /api/v1/documents/:documentId/extract`
+
+Extract text from the selected page/region. Return status, text,
+expressions, and ambiguity notes. Keep scope bounded.
+
+### `PUT /api/v1/sessions/:sessionId/board`
+
+Persist a versioned board state. Use version checks so stale writes
+cannot silently overwrite newer work.
+
+``` json
 {
-  "worksheet_id": "uuid",
-  "status": "processing",
-  "preview_url": "/api/v1/worksheets/uuid/preview"
+  "version": 8,
+  "elements": [],
+  "viewport": {"x": 0, "y": 0, "zoom": 1}
 }
 ```
 
-### `GET /api/v1/worksheets/{worksheet_id}`
-Retrieve worksheet parse status, preview metadata, parsed content, ambiguity notes, and confirmation status.
+### `POST /api/v1/tutor/turn`
 
-### `PATCH /api/v1/worksheets/{worksheet_id}`
-Update extracted problem text or expression corrections. Once confirmed, attach to the active session.
+Start a turn from typed input or a browser voice event.
 
-### `POST /api/v1/worksheets/{worksheet_id}/confirm`
-Confirm extracted context.
-
-**Request**
-```json
+``` json
 {
-  "problem_text": "Student-reviewed problem statement",
-  "expressions": ["x(t)=e^{-t}u(t)"],
-  "active_page": 1
+  "sessionId": "uuid",
+  "question": "Can you explain the selected step?",
+  "inputMode": "text",
+  "focus": {
+    "documentId": "uuid",
+    "pageNumber": 3,
+    "selectedText": "..."
+  },
+  "tutorMode": "hint"
 }
 ```
 
-### `POST /api/v1/tools/tutor-turn`
-Called by Bolna custom function; requires server-to-server authentication.
+The endpoint may return a completed result or `202 Accepted` with a
+`turnId` for a long-running turn. The client can poll
+`GET /api/v1/sessions/:sessionId/turns?after=...`.
 
-**Request**
-```json
+### `POST /api/v1/voice/session`
+
+Create a Bolna web-call session server-side. Require authentication and
+rate limiting. Never return a long-lived provider API key.
+
+### `POST /api/v1/webhooks/bolna`
+
+Optional callback endpoint if required by the selected Bolna
+integration. Confirm the current provider's signature/authentication
+contract and reject untrusted callbacks; do not assume signing is
+available.
+
+### API rules
+
+-   Validate requests and responses with Zod.
+-   Verify ownership of every session, document, board, and turn.
+-   Bound file size, PDF pages, context size, graph points, and request
+    frequency.
+-   Use request IDs and turn IDs for tracing.
+-   Standardize errors as
+    `{ "error": { "code": "...", "message": "...", "retryable": false } }`.
+-   Never return stack traces, private storage keys, secrets, or raw
+    provider error payloads.
+-   Use idempotency keys for tutor turns and callbacks where applicable.
+
+## 11. Data Model
+
+Use a small Firestore model. Keep data-access functions isolated under
+`lib/db` so the database can be changed without rewriting UI code.
+
+### `users/{userId}`
+
+-   `createdAt`
+-   `displayName`
+-   `preferences` (voice, theme, default tutor mode)
+
+### `sessions/{sessionId}`
+
+-   `ownerId`, `title`, `status: active | archived`
+-   `activeDocumentId`, `activePage`
+-   `tutorMode: hint | explain | solve`
+-   `boardVersion`, `createdAt`, `updatedAt`
+
+### `sessions/{sessionId}/boardVersions/{versionId}`
+
+-   `version`, `elements`, `viewport`, `createdAt`, `createdBy`
+
+If board state becomes too large for a Firestore document, store
+versioned JSON blobs in Firebase Storage and keep references in
+Firestore.
+
+### `documents/{documentId}`
+
+-   `ownerId`, `sessionId`, `storagePath`, `originalFileName`
+-   `mimeType`, `sizeBytes`, `pageCount`
+-   `parseStatus: uploaded | processing | ready | needs_confirmation | failed`
+-   `extractedPages` or references to page extraction records
+-   `createdAt`, `updatedAt`
+
+### `documents/{documentId}/annotations/{annotationId}`
+
+-   `ownerId`, `sessionId`, `pageNumber`
+-   `type: ink | highlight | text`
+-   `geometry`, `content`, `createdAt`, `updatedAt`
+
+### `sessions/{sessionId}/turns/{turnId}`
+
+-   `ownerId`, `question`, `inputMode`, `intent`, `focus`
+-   `status: queued | running | completed | failed`
+-   `spokenResponse`, `artifact`, `toolCalls`, `verificationStatus`
+-   `createdAt`, `completedAt`
+
+### Persistence rules
+
+-   Do not store PDFs, large image blobs, or base64 strings in
+    Firestore.
+-   Keep files in private object storage.
+-   Keep board data versioned and bounded.
+-   Define retention and deletion behavior explicitly.
+-   Do not persist raw audio by default.
+-   Do not log private worksheets or full transcripts unless necessary
+    and disclosed.
+
+## 12. Voice and Bolna Integration
+
+### Voice flow
+
+1.  User clicks **Start voice**.
+2.  Client requests `/api/v1/voice/session`.
+3.  Next.js calls Bolna's current session API using a server-side
+    secret.
+4.  Client starts the Bolna Web Call SDK with short-lived session
+    details.
+5.  User asks about the active page/board.
+6.  Agent calls Scribble's allowlisted tutor tool when context or an
+    action is needed.
+7.  The Next.js tool handler returns concise spoken text and structured
+    artifact metadata.
+8.  UI shows the artifact and offers to insert it on the board.
+9.  User can mute or end the session.
+
+### Required states
+
+`idle`, `requesting_permission`, `connecting`, `active`, `muted`,
+`reconnecting`, `error`, `ended`.
+
+### Security
+
+-   `BOLNA_API_KEY` is server-only.
+-   Confirm the current Bolna session-mint API contract; do not blindly
+    copy old examples.
+-   Authenticate and rate-limit session creation.
+-   End the call and release microphone resources on exit.
+-   Scope voice session IDs to the authorized Scribble session.
+-   Validate every tool call server-side.
+
+### Agent behavior
+
+-   Act as a patient tutor, not a generic assistant.
+-   Use active context when relevant.
+-   Speak briefly; put long equations in the UI.
+-   Ask for clarification when the selection is unclear.
+-   Respect `hint`, `explain`, and `solve` modes.
+-   Use tools for checks, artifacts, and graphs.
+-   Never claim verification unless the server reports a successful
+    check.
+-   Never shame the learner.
+
+The typed question box must use the same tutor orchestrator and context
+builder as voice; do not maintain separate tutor logic.
+
+## 13. Agent Orchestration and Tool Contracts
+
+### Principle
+
+"Agentic" means the tutor chooses and executes constrained actions based
+on the student's goal, observes the result, and responds. It does not
+mean adding a complicated multi-agent framework.
+
+Use one tutor model, a small tool registry, bounded calls per turn, and
+server-enforced permissions.
+
+### Tool registry
+
+-   **`get_active_context`** --- returns active document/page, selected
+    region, confirmed extracted text, compact board summary, and recent
+    turns.
+-   **`explain_selection`** --- explains selected text/equation in
+    context; asks for clarification if selection is empty or ambiguous.
+-   **`give_hint`** --- returns one next-step hint and withholds the
+    full solution unless asked.
+-   **`check_work`** --- compares supplied/confirmed work to the target
+    problem; returns likely issue and verification status. It must not
+    pretend handwriting was identified when it was not.
+-   **`create_board_artifact`** --- validates and saves a proposed
+    note/equation/graph; returns an element ID; user can insert, move,
+    or dismiss it.
+-   **`plot_expression`** --- validates a constrained expression and
+    bounded range, then returns numeric points.
+-   **`highlight_region`** --- validates authorized document, page, and
+    normalized geometry; creates a proposed annotation.
+-   **`save_session`** --- persists the current state on explicit
+    save/autosave events.
+
+### Example tool payload
+
+``` json
 {
-  "scribble_session_id": "uuid",
-  "question": "Can you explain why this is right-sided?",
-  "intent": "explain_concept",
-  "focus_text": null,
-  "expression": null
+  "sessionId": "uuid",
+  "artifact": {
+    "type": "tutor_note",
+    "title": "Chain rule",
+    "body": "Differentiate the outer function, then multiply by the derivative of the inner function."
+  }
 }
 ```
 
-**Response**
-```json
-{
-  "turn_id": "uuid",
-  "spoken_response": "A right-sided signal is zero before its starting point. Let's connect that to your expression.",
-  "artifact_summary": "Added a two-step explanation to your notebook.",
-  "status": "ok"
-}
-```
+### Tool execution policy
 
-The endpoint also stores the complete structured artifact in the database for the frontend. Do not require Bolna to pass a large worksheet image or the entire conversation on every tool call; load authoritative context by session ID.
+-   Model may choose only registered tools.
+-   Validate all inputs with Zod.
+-   Check resource ownership and permissions for every tool.
+-   Limit tool calls per turn and set timeouts.
+-   Make writes idempotent where possible.
+-   Log tool name, duration, status, and turn ID---not sensitive
+    payloads by default.
+-   Never let tools fetch arbitrary URLs or execute arbitrary code.
+-   Return structured errors to the model and UI.
 
-### `GET /api/v1/sessions/{session_id}/turns?after={cursor}`
-Return new structured tutor turns. Implement either Server-Sent Events or short polling. **For a hackathon MVP, start with short polling** at a modest interval and move to SSE only if there is enough time and a measurable need.
+## 14. Math, Equations, and Graphing
 
-### `POST /api/v1/worksheets/{worksheet_id}/graph`
-Generate plot points for a supported expression.
+### Equation rendering
 
-**Request**
-```json
-{
-  "expression": "sin(x)",
-  "variable": "x",
-  "x_min": -6.28,
-  "x_max": 6.28
-}
-```
+-   Use KaTeX for LaTeX rendering.
+-   Treat LaTeX as content, not executable HTML.
+-   Separate inline and display equations.
+-   Allow copying equation source where useful.
+-   Rendering does not prove mathematical correctness.
 
-**Response**
-```json
-{
-  "expression": "sin(x)",
-  "variable": "x",
-  "points": [{"x": -6.28, "y": 0.003}, {"x": -6.27, "y": 0.013}],
-  "status": "ok"
-}
-```
+### Math checking
 
-### API behavior rules
+Implement constrained symbolic/numeric checks in TypeScript or a vetted
+library compatible with the chosen Next.js runtime. **Do not add a
+Python microservice to use SymPy.**
 
-- Return consistent error JSON: `code`, `message`, and optional `retryable`.
-- Validate UUIDs and resource ownership/session membership.
-- Put hard limits on file size, number of pages, generated graph points, and prompt/context size.
-- Use request IDs in logs to trace upload → parse → tutor turn → artifact rendering.
-- Do not return stack traces, secret values, raw provider errors, or private storage credentials to the browser.
+MVP checks may include: - Numeric arithmetic. - Equivalence for a
+constrained expression grammar. - Derivatives for supported elementary
+functions if the selected library handles them reliably. - Numeric spot
+checks for symbolic transformations. - Graphing of supported
+single-variable functions.
 
----
+If no deterministic check exists, mark the result `unverified`. Do not
+pretend to have a proof checker.
 
-## 12. Data Model
+### Graph generation
 
-Keep the data model small.
+-   Parse expressions with a strict allowlist.
+-   Support only documented operators/functions, such as `+`, `-`, `*`,
+    `/`, powers, `sin`, `cos`, `exp`, `log`, and `sqrt`, subject to
+    actual parser support.
+-   Bound x-range and point count.
+-   Reject `NaN`, infinity, invalid domains, and oversized requests.
+-   Render axes, grid, labels, and expression.
+-   Never use `eval`, `new Function`, or unrestricted expression
+    execution.
 
-### `sessions`
-- `id` UUID primary key
-- `created_at` timestamp
-- `status` (`active`, `ended`)
-- `active_worksheet_id` nullable UUID
-- `tutor_mode` (`hint`, `explain`, `solve`) default `hint`
-- `voice_run_id` nullable string
+## 15. Authentication, Security, and Privacy
 
-### `worksheets`
-- `id` UUID primary key
-- `session_id` foreign key
-- `storage_key` string
-- `mime_type` string
-- `parse_status` (`uploaded`, `processing`, `ready`, `needs_confirmation`, `failed`)
-- `raw_extracted_text` text
-- `confirmed_problem_text` text nullable
-- `expressions_json` JSONB
-- `ambiguities_json` JSONB
-- `parse_confidence` float nullable
-- `confirmed_at` timestamp nullable
-- `created_at` timestamp
+### Authentication
 
-### `turns`
-- `id` UUID primary key
-- `session_id` foreign key
-- `worksheet_id` nullable foreign key
-- `intent` string
-- `question_text` text
-- `spoken_response` text
-- `artifact_json` JSONB
-- `verification_status` (`not_applicable`, `verified`, `failed`, `unverified`)
-- `created_at` timestamp
+-   Use Firebase Authentication.
+-   Verify ID tokens in Next.js server code for protected routes.
+-   Never trust a request-body user ID as proof of identity.
+-   Enforce ownership at the data-access layer.
+-   Use secure HTTP-only cookies where appropriate for the selected auth
+    flow.
 
-### `events` (optional if polling turns directly)
-- `id` UUID primary key
-- `session_id` foreign key
-- `event_type` string
-- `payload_json` JSONB
-- `created_at` timestamp
+### File security
 
-### Persistence guidance
+-   Accept PDFs only for the initial document flow.
+-   Check MIME type and file signature.
+-   Apply size and page-count limits.
+-   Keep files private; use short-lived URLs or authorized streaming
+    routes.
+-   Prevent path traversal and arbitrary object-key access.
+-   Never expose Firebase service account credentials to the browser.
 
-For the hackathon, a full event bus is unnecessary. Store each completed turn and let the frontend ask for turns after its most recent cursor. Add SSE/event infrastructure only if polling creates a noticeable UX problem.
+### Voice/model security
 
----
+-   Keep Bolna and model keys server-side.
+-   Rate-limit voice-session creation and tutor turns.
+-   Bound prompts, context, tool calls, and output size.
+-   Treat PDF text, OCR output, notes, and retrieved content as
+    untrusted data. Instructions embedded in documents cannot override
+    system policy or tool authorization.
+-   Authorize tool calls independently of model intent.
+-   Do not store raw voice recordings by default.
+-   Explain external-provider data processing in the privacy notice.
 
-## 13. Repository Structure
+### Data deletion
 
-Suggested monorepo layout:
+-   Allow deletion of a session and its board state, annotations, turns,
+    and uploaded files.
+-   Delete child records and storage objects consistently.
+-   Make deletion failures visible and retryable.
+-   Define log retention and provider-side retention according to the
+    selected services' terms.
 
-```text
-scribble/
-├── apps/
-│   └── web/                          # Next.js app
-│       ├── app/
-│       │   ├── page.tsx
-│       │   ├── notebook/[sessionId]/page.tsx
-│       │   └── api/bolna-session/route.ts
-│       ├── components/
-│       │   ├── worksheet-uploader.tsx
-│       │   ├── worksheet-preview.tsx
-│       │   ├── voice-controls.tsx
-│       │   ├── notebook-canvas.tsx
-│       │   ├── tutor-artifact.tsx
-│       │   └── function-graph.tsx
-│       └── lib/
-│           ├── bolna-client.ts
-│           ├── api-client.ts
-│           └── types.ts
-├── services/
-│   └── api/                           # FastAPI service
-│       ├── app/
-│       │   ├── main.py
-│       │   ├── config.py
-│       │   ├── routes/
-│       │   │   ├── sessions.py
-│       │   │   ├── worksheets.py
-│       │   │   ├── tutor.py
-│       │   │   └── graphs.py
-│       │   ├── services/
-│       │   │   ├── worksheet_parser.py
-│       │   │   ├── tutor_engine.py
-│       │   │   ├── math_validator.py
-│       │   │   ├── graph_service.py
-│       │   │   └── storage.py
-│       │   ├── models/
-│       │   ├── schemas/
-│       │   └── prompts/
-│       │       └── tutor_system.md
-│       ├── tests/
-│       └── requirements.txt
-├── docs/
-│   ├── architecture.md
-│   └── demo-script.md
-├── .env.example
-├── README.md
-└── package.json
-```
+### Security checklist
 
-Avoid building every folder up front. Create the smallest structure matching the code you actually need, then refactor after the first end-to-end flow works.
+-   [ ] No secrets in `NEXT_PUBLIC_*`.
+-   [ ] Firebase Admin code is server-only.
+-   [ ] Protected routes verify identity.
+-   [ ] Every resource read/write verifies ownership.
+-   [ ] Upload size/type/page limits are enforced.
+-   [ ] Provider calls have timeouts and rate limits.
+-   [ ] Agent tools use an allowlist and schema validation.
+-   [ ] No model-generated code is executed.
+-   [ ] No raw PDFs/tokens are logged.
+-   [ ] Session deletion covers database and storage.
 
----
+## 16. Error Handling and Reliability
 
-## 14. Environment Configuration
+  -----------------------------------------------------------------------
+  Failure                             Required behavior
+  ----------------------------------- -----------------------------------
+  PDF upload fails                    Keep session; show retry and
+                                      limits.
 
-Example `.env.example` (use placeholders only):
+  PDF cannot render                   Explain and offer another
+                                      file/page.
 
-```dotenv
-# Web app
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-API_BASE_URL=http://localhost:8000
+  OCR/vision call fails               Keep PDF open; allow manual
+                                      question entry.
 
-# Bolna - server side only; never use NEXT_PUBLIC_ for secrets
-BOLNA_API_KEY=replace_me
-BOLNA_AGENT_ID=replace_me
-BOLNA_TOOL_SHARED_SECRET=replace_me_with_high_entropy_secret
+  Handwriting ambiguous               Ask user to confirm expression.
 
-# Database / storage
-DATABASE_URL=replace_me
-STORAGE_BUCKET=scribble-private
-STORAGE_SERVICE_ROLE_KEY=replace_me
+  Voice fails                         Show retry; keep typed input
+                                      available.
 
-# Pluggable model / OCR integration
-VISION_PROVIDER=replace_me
-VISION_API_KEY=replace_me
-TUTOR_MODEL_PROVIDER=replace_me
-TUTOR_MODEL_API_KEY=replace_me
+  Tutor model times out               Mark turn failed/retryable; never
+                                      fabricate an answer.
 
-# App controls
-MAX_UPLOAD_MB=10
-MAX_PDF_PAGES=5
-GRAPH_MAX_POINTS=1000
-```
+  Tool call fails                     Show failed action and allow retry.
 
-Use one provider configuration that matches the team's available credentials; these generic names are illustrative. Do not commit `.env`, real keys, signed URLs, or user worksheet content into Git.
+  Autosave fails                      Show unsaved state and retry.
 
----
+  Graph syntax invalid                Explain supported syntax; do not
+                                      execute it.
 
-## 15. AI and Prompt Design
+  Auth expires                        Preserve local unsaved state where
+                                      feasible and request sign-in.
+  -----------------------------------------------------------------------
 
-### Structured tutor output
+Reliability rules: - Keep workspace interactive while model calls run. -
+Use optimistic UI only when rollback is possible. - Store a turn ID and
+idempotency key to deduplicate retries. - Do not duplicate board
+artifacts on network retries. - Never discard board state after an
+unrelated provider error.
 
-The tutoring model should return validated JSON rather than a free-form wall of text. Recommended artifact types:
-
-- `steps` — ordered solution/explanation steps.
-- `hint` — one next-step hint.
-- `mistake` — suspected incorrect step, reason, and correction.
-- `graph` — expression and graph metadata.
-- `concept` — definition, intuition, and relation to current worksheet.
-- `clarification` — explicit question to resolve uncertainty.
-
-### Intent routing
-
-| Student language | Intent | Expected behavior |
-|---|---|---|
-| “Explain why…” / “What does this mean?” | `explain_concept` | Short spoken explanation + detailed notebook note. |
-| “Give me a hint” / “What should I do next?” | `give_hint` | One actionable hint; do not reveal the full solution immediately. |
-| “Check my work” / “Where did I go wrong?” | `check_work` | Identify target work or ask the student to select/provide it; compare mathematical steps where possible. |
-| “Plot this” / “Show the graph” | `graph_expression` | Validate expression and return plot data. |
-| “Solve it” | `solve_problem` | Give a clear worked solution, with validation status indicated. |
-
-### Math trust policy
-
-- If OCR confidence is low, ask the user to confirm the formula.
-- If a symbolic check fails, do not speak as if the result is confirmed.
-- If the model proposes a derivation with no deterministic verification path, label it as an explanation rather than a formally verified proof.
-- When the user asks to check their own work, avoid pretending the parser has identified handwriting that it has not.
-- Separate `spoken_response` from long-form artifact text; speech should be concise and the page can hold full equations.
-
-### Evaluation set
-
-Create a small local test set of 15–25 representative prompts before tuning prose or adding features. Include:
-
-- Concept clarification on a parsed problem.
-- Follow-up question relying on prior context.
-- Ambiguous OCR expression requiring clarification.
-- Correct algebraic transformation.
-- Incorrect algebraic transformation.
-- Graph request with supported expression.
-- Graph request with malicious/unsupported syntax.
-- User requests a hint and explicitly says not to solve it.
-- Tool API timeout/error.
-
-Manually grade grounding, math correctness, whether it follows the requested tutoring mode, and whether the UI artifact matches the spoken response.
-
----
-
-## 16. Privacy, Safety, and Security
-
-This is an education tool and may be used by younger students. Privacy needs to be visible in the product, not just buried in deployment notes.
-
-- Microphone activates only after explicit user action in the MVP; show a persistent active state and a mute/end control.
-- Do not claim that ambient audio is processed only for wake-word detection unless that behavior is actually implemented and verified.
-- Do not store raw audio unless there is a clear reason and informed user choice. Prefer storing necessary text/structured turns only, subject to provider behavior and configuration.
-- Make it clear that worksheet images are uploaded to the service for processing.
-- Store files in private buckets; use scoped access and short-lived URLs.
-- Do not put student names or other personal data into prompts unless required.
-- Add rate limits to session minting, worksheet uploads, parsing, and tutoring calls.
-- Authenticate internal tool endpoints with a dedicated secret or supported server-side authentication mechanism.
-- Validate tool payloads and enforce a maximum request size.
-- Prevent prompt injection inside worksheet text from changing the tutor's system behavior; treat worksheet content as untrusted data.
-- Never execute arbitrary code generated by the model.
-- Add a way to end the session and clear the current worksheet/session from the UI.
-- Keep application logs free of API keys, full uploaded page images, and unnecessary personal content.
-
----
-
-## 17. Reliability and Failure Handling
-
-| Failure | User-visible behavior | Recovery |
-|---|---|---|
-| Upload fails | “That file didn’t upload.” | Retry; show allowed file types/size. |
-| OCR timeout | “I couldn't read the page yet.” | Retry parsing or use sample worksheet/type the problem. |
-| Ambiguous symbol | Highlight the uncertain expression. | Ask student to edit/confirm. |
-| Microphone denied | Explain browser permission setting. | Retry after permission update or type a question. |
-| Bolna session mint fails | Show voice service unavailable. | Retry with a fresh session; retain worksheet state. |
-| WebRTC call fails | Show connection error and preserve work. | Restart with a fresh minted session. |
-| Tutor backend timeout | Agent should give a brief fallback rather than invent an answer. | Retry the tutor tool request once where safe. |
-| Math validation fails | Mark the answer unverified or wrong. | Ask for clarification or give a cautious explanation. |
-| Graph expression invalid | Show supported syntax hint. | Let user edit expression. |
-
-Do not automatically retry a non-idempotent tool operation without a request ID or idempotency key. A repeated tutoring request should not create duplicate visible artifacts.
-
----
-
-## 18. Testing Plan
+## 17. Testing and Evaluation
 
 ### Unit tests
 
-- Upload file-type, size, and page-count validation.
-- OCR response schema validation.
-- Worksheet confirmation updates.
-- Intent/schema validation for tutor turns.
-- Symbolic parser allowlist and malicious expression rejection.
-- Graph point limits and non-finite result handling.
-- Duplicate turn/idempotency behavior.
+-   Zod schemas and tool argument validation.
+-   Board serialization and coordinate transforms.
+-   PDF annotation normalization.
+-   Safe expression parser and graph bounds.
+-   Context assembly and truncation.
+-   Tool registry rejects unknown tools.
+-   Authorization rejects cross-user access.
+-   Idempotency prevents duplicate artifacts.
 
 ### Integration tests
 
-- Upload → parse → edit → confirm worksheet.
-- Create session → mint Bolna session without leaking API key.
-- Bolna custom function → tutoring endpoint → DB turn creation.
-- Frontend receives turn artifact and renders equations.
-- Voice tool failure does not erase the worksheet or break the UI.
-- Session ID cannot access another session's worksheet.
+-   Create session and persist board.
+-   Upload PDF and retrieve authorized preview.
+-   Extract text from a text-based PDF.
+-   Create tutor turn and persist structured artifact.
+-   Mock provider success and failure.
+-   Create voice session without exposing server secrets.
+-   Save/reload PDF annotations.
+-   Delete session and associated files.
+
+### End-to-end tests
+
+1.  Create session.
+2.  Open sample PDF.
+3.  Navigate to page and select text.
+4.  Ask "Explain this step" using typed input.
+5.  Confirm answer uses the selected region.
+6.  Insert explanation onto board.
+7.  Draw a stroke and test undo/redo.
+8.  Reload and verify persistence.
+9.  Start/end voice session in a browser with microphone access.
+10. Simulate provider failure and verify workspace remains usable.
+
+### Tutor evaluation set
+
+Prepare 20--30 cases: correct selection, ambiguous selection, contextual
+follow-up, hint-only request, full-solution request, correct/incorrect
+derivation, unsupported syntax, scanned PDF with low confidence, prompt
+injection inside a PDF, provider timeout, duplicate retry, and
+cross-user access attempt.
+
+Grade grounding, math correctness, mode adherence, tool appropriateness,
+artifact/speech consistency, and honest uncertainty.
+
+## 18. Observability
+
+Record request ID, turn ID, route, provider/model identifier, latency,
+status, tool name/duration, upload/parse status, save failures, and
+voice session status.
+
+Do not log API keys, auth tokens, full PDF content by default, raw
+audio, full board snapshots without a protected debugging need, or
+private signed URLs.
+
+Useful metrics: - Time from PDF open to first tutor response. - Tutor
+turns that produce a useful artifact. - Tool-call success rate. - PDF
+rendering success rate. - Autosave failure rate. - Voice connection
+success rate. - Clarification rate caused by ambiguous extraction.
+
+## 19. Environment Variables
+
+Example `.env.example`:
+
+``` dotenv
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Firebase client identifiers (not authorization by themselves)
+NEXT_PUBLIC_FIREBASE_API_KEY=replace_me
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=replace_me
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=replace_me
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=replace_me
+NEXT_PUBLIC_FIREBASE_APP_ID=replace_me
+
+# Firebase Admin — server only
+FIREBASE_CLIENT_EMAIL=replace_me
+FIREBASE_PRIVATE_KEY=replace_me
+
+# Bolna — server only
+BOLNA_API_KEY=replace_me
+BOLNA_AGENT_ID=replace_me
+BOLNA_TOOL_SHARED_SECRET=replace_me
+
+# Tutor / vision provider — server only
+TUTOR_MODEL_PROVIDER=replace_me
+TUTOR_MODEL_API_KEY=replace_me
+TUTOR_MODEL_NAME=replace_me
+VISION_MODEL_NAME=replace_me
+
+MAX_UPLOAD_MB=15
+MAX_PDF_PAGES=30
+MAX_TOOL_CALLS_PER_TURN=4
+GRAPH_MAX_POINTS=1000
+```
+
+Never prefix provider secrets or Firebase Admin credentials with
+`NEXT_PUBLIC_`. Keep `.env.local` out of Git and verify variable names
+against the actual SDK setup.
+
+## 20. Deployment
+
+Deploy the Next.js application to Vercel. Configure Firebase and
+provider accounts separately, but deploy no additional Scribble server.
+
+Checklist: - \[ \] Next.js build passes in CI. - \[ \] Vercel
+environment variables are configured. - \[ \] Firebase Auth authorized
+domains include the deployed domain. - \[ \] Firestore and Storage rules
+enforce ownership. - \[ \] Provider credentials remain server-side. - \[
+\] Bolna session creation works on deployed HTTPS. - \[ \] Browser
+microphone permission works. - \[ \] PDF upload/rendering works in
+production. - \[ \] Save/reload works after refresh. - \[ \] Provider
+timeouts and recovery paths are tested. - \[ \] Demo session is
+available. - \[ \] README accurately documents setup, limitations, and
+demo. - \[ \] Re-check the official buildathon page for submission
+deadline changes.
 
-### End-to-end smoke test
+## 21. Build Plan
 
-1. Open the app in Chrome.
-2. Upload the sample worksheet.
-3. Confirm the extracted question.
-4. Start voice and ask “Can you explain the next step?”
-5. Confirm the agent responds audibly.
-6. Confirm a structured answer appears in the notebook panel.
-7. Ask a follow-up relying on the worksheet context.
-8. Ask for a graph of a supported expression.
-9. Mute and end the call; verify mic indicator changes and audio stops.
-10. Reload the page and verify intended session persistence behavior.
+### Milestone 1 --- Workspace shell
 
-### Demo acceptance gate
+-   Scaffold Next.js App Router + TypeScript.
+-   Create landing page and workspace layout.
+-   Build resizable PDF/board/tutor panels.
+-   Add loading, empty, and error states.
+-   Deploy to Vercel early.
 
-Do not add new P1 features until this smoke test passes repeatedly from a clean browser session and a fresh deployment.
+**Exit:** user can open a blank session on the deployed app.
 
----
+### Milestone 2 --- PDF and whiteboard
 
-## 19. Metrics for the Demo
+-   Implement PDF upload and PDF.js rendering.
+-   Add page navigation and zoom.
+-   Implement strokes, eraser, undo/redo, pan, zoom.
+-   Add PDF annotation overlay.
+-   Persist board and annotations.
 
-Measure a few useful indicators rather than inventing vanity metrics.
+**Exit:** user can open a PDF, annotate it, draw, reload, and recover
+saved work.
 
-- **Time to first useful answer:** from finishing worksheet confirmation to visible/audio response.
-- **Voice interaction success rate:** successful voice sessions / attempted sessions.
-- **Tool invocation success rate:** successful tutor tool responses / tutor tool attempts.
-- **Worksheet parse correction rate:** how often the student must edit extracted content.
-- **Grounded answer rate:** answer is demonstrably tied to the active worksheet.
-- **Math validation coverage:** fraction of generated math outputs that could be deterministically checked.
-- **Follow-up continuity:** whether the student can ask a contextual follow-up without restating the worksheet.
+### Milestone 3 --- Text tutor
 
-For the hackathon pitch, show one measured before/after flow: repeated upload workflow versus one upload followed by multiple voice turns. Do not make quantitative claims until they have actually been measured.
+-   Implement authenticated Next.js tutor route.
+-   Integrate one model provider.
+-   Build bounded context assembly and structured responses.
+-   Render explanations and equations.
+-   Insert a tutor artifact onto the board.
 
----
+**Exit:** a typed question about the active PDF produces a grounded
+artifact.
 
-## 20. Implementation Plan: 18–31 October 2026
+### Milestone 4 --- Agent tools and math
 
-The listed submission deadline is 31 October, leaving roughly two weeks from this document's preparation date. This schedule assumes a small team and prioritizes one reliable vertical slice over feature breadth.
+-   Add tool registry and validation.
+-   Implement context, hint, check-work, artifact, and plot tools.
+-   Add graph rendering and verification labels.
+-   Add idempotency and error handling.
 
-### Phase 1 — Day 1–2: Lock scope and make the shell
+**Exit:** at least two useful tools work with visible results.
 
-- Freeze the P0 list.
-- Create Next.js frontend and FastAPI service.
-- Build notebook layout and sample worksheet state.
-- Configure database and private file storage.
-- Create `.env.example`, README, and first deploy.
+### Milestone 5 --- Bolna voice
 
-**Exit condition:** deployed app opens and shows a sample worksheet in the notebook layout.
-
-### Phase 2 — Day 3–4: Worksheet ingestion
-
-- Add image/PDF upload.
-- Store source file and create worksheet record.
-- Integrate OCR/vision extraction.
-- Build editable problem confirmation screen.
-- Add a preloaded worksheet fallback.
-
-**Exit condition:** a user can upload or load a sample, edit extracted text, and confirm it.
-
-### Phase 3 — Day 5–7: Voice integration
-
-- Create/configure Bolna agent.
-- Implement secure short-lived session mint endpoint.
-- Integrate `@bolna/web-call` lifecycle and controls.
-- Test mic permission, audio output, disconnect, and retry.
-
-**Exit condition:** voice call starts from the browser and the tutor reliably speaks.
-
-### Phase 4 — Day 8–9: Tutor tool and structured artifacts
-
-- Implement `/tools/tutor-turn` endpoint.
-- Configure Bolna custom function with authentication and session context.
-- Implement tutor structured output and DB persistence.
-- Add polling for new turns.
-- Render explanation steps and equations.
-
-**Exit condition:** one spoken question generates an audible response and a matching visual artifact without a manual refresh.
-
-### Phase 5 — Day 10–11: Math tools
-
-- Add safe SymPy checks for a bounded set of expressions.
-- Add graph generation for common functions.
-- Show verified/unverified state accurately.
-- Add at least one clear mistake-checking scenario if time permits.
-
-**Exit condition:** at least one math operation is validated and one graph is rendered end-to-end.
-
-### Phase 6 — Day 12: Reliability and UX polish
-
-- Fix the top issues from the end-to-end smoke test.
-- Add fallback errors and typed question option.
-- Improve active voice indicator and loading behavior.
-- Add simple privacy language and end-session behavior.
-- Check laptop/screen-sharing demo resolution.
-
-**Exit condition:** demo works repeatedly in a clean browser session.
-
-### Phase 7 — Day 13: Submission assets
-
-- Record a 60–90 second demo video.
-- Write the README: problem, product, stack, setup, architecture, limitations, demo link.
-- Prepare a concise pitch and architecture slide.
-- Confirm submission form requirements and deadline on the official page.
-- Freeze features; fix only blocking bugs.
-
-**Exit condition:** public demo link works, code/repo is presentable, and submission is complete before the deadline.
-
-### Scope cut order if behind schedule
-
-Cut in this order:
-1. Roasting / playful personality.
-2. Persistent history beyond the current session.
-3. Automatic mistake detection across arbitrary handwriting.
-4. PDF multi-page support beyond a single selected page.
-5. Fancy animations or handwriting imitation.
-
-Do **not** cut:
-- Bolna voice interaction.
-- Worksheet context.
-- A visible structured answer artifact.
-- One credible math or graph feature.
-- Error handling for live demo blockers.
-
----
-
-## 21. Demo Script (60–90 seconds)
-
-### Setup
-Have a sample worksheet ready. Use headphones if needed. Ensure the Bolna agent and backend are already configured. Avoid relying on live OCR as the only path in the demo.
-
-### Flow
-
-**0–10 seconds — The friction**  
-Show the worksheet and describe the current loop: screenshot, AirDrop, upload, explain, repeat.
-
-**10–20 seconds — Upload once**  
-Drop a worksheet into Scribble. Show the extracted problem and confirm it.
-
-**20–40 seconds — Voice interaction**  
-Start the voice tutor and ask a question specific to the worksheet, such as: “I don't remember what a right-sided signal means. Why does that matter here?”
-
-**40–55 seconds — Context continuity**  
-Ask a follow-up without repeating the problem: “So what does that tell me about the region before zero?”
-
-**55–70 seconds — Visible result**  
-Show the explanation steps or graph appearing on the notebook workspace. If supported, show an equation check with a truthful verification label.
-
-**70–90 seconds — Close**  
-Re-state the value: Scribble knows what is on the page, lets the student ask naturally, and puts the explanation back beside the work.
-
-### Demo fallback checklist
-
-- Sample worksheet has been tested after deployment.
-- Voice agent and tool endpoint are reachable over HTTPS.
-- No secrets are exposed in browser dev tools.
-- Browser microphone permissions are granted.
-- The graph example is pre-tested.
-- There is a typed prompt fallback in case live audio fails.
-- The product can recover without a full page reload if the voice session ends.
-
----
-
-## 22. Deployment and Release Checklist
-
-- [ ] Frontend deployed to HTTPS URL.
-- [ ] Python backend deployed to HTTPS URL.
-- [ ] Database migrations applied.
-- [ ] Storage bucket is private and upload validation is active.
-- [ ] `BOLNA_API_KEY` and all model/provider credentials are server-side only.
-- [ ] Bolna agent ID points to the correct configured agent.
-- [ ] Bolna custom function URL is public HTTPS and protected with a supported auth header/token.
-- [ ] CORS only allows the deployed frontend and local development origin.
-- [ ] Request size and rate limits are configured.
-- [ ] Sample worksheet and graph work on the deployed environment.
-- [ ] End session, mute, retry, and error paths are tested.
-- [ ] README includes setup and current limitations.
-- [ ] Demo video and submission form are ready before 31 October 2026.
-
----
-
-## 23. Key Risks and Mitigations
-
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Bolna web-call or custom function config takes longer than expected | High | Validate voice session and one tool call on Day 1–2, before investing in UI polish. |
-| Speech feels like an ordinary chatbot with a mic | High | Every turn must use worksheet context and create a visible artifact when relevant. Demo follow-up continuity. |
-| OCR misreads handwritten notation | High | Require confirmation for ambiguous expressions and maintain a known-good sample worksheet. |
-| Incorrect math answer damages trust | High | Constrain math scope, use SymPy/numeric checks, label unverified results. |
-| Live audio/network fails during judging | High | Preflight the call, use the typed fallback, preserve the page and retry with a fresh session. |
-| Attempting always-on listening consumes the schedule | High | Use user-initiated sessions for MVP; implement wake phrase only after core loop is stable. |
-| Tool endpoint abuse | Medium/High | Auth token, rate limit, payload validation, session scoping, request size limits. |
-| Feature creep | High | Prioritize a single end-to-end flow; cut P1/P2 features on schedule. |
-| Voice answer and notebook artifact disagree | Medium/High | Generate both from one structured tutor response and persist the response before returning. |
-
----
-
-## 24. Product Decisions to Resolve Early
-
-These are implementation decisions, not reasons to delay coding. Pick one and document it in the repo:
-
-1. **Vision/OCR provider:** use the provider with reliable access and acceptable latency; do not build a model training pipeline.
-2. **Database/storage:** use the team's quickest managed Postgres + private object storage setup.
-3. **Frontend update mechanism:** implement simple short polling first; upgrade to SSE only if required.
-4. **Session model:** use an opaque server-generated `session_id`; the frontend must not be able to read another session's worksheet or turns.
-5. **Scope of math verification:** select a few operations (e.g. simplification/equivalence and safe single-variable plotting) and test them well.
-6. **First demo worksheet:** choose one clear, visually readable example with a compelling spoken question and a graph or equation artifact.
-
----
-
-## 25. Definition of Done
-
-Scribble is ready to submit when all of the following are true:
-
-- A new user can open the deployed app and load a worksheet.
-- The problem text can be extracted and confirmed or corrected.
-- The user can start a live voice session through Bolna from the browser.
-- A question about the current worksheet reaches Scribble's custom tutor endpoint.
-- Bolna speaks a contextual response.
-- The same turn is persisted and appears as readable structured output in the notebook without a manual refresh.
-- At least one graphing workflow works; a math-check workflow is included if it can be made credible within the deadline.
-- Errors preserve the worksheet and give the user a recovery path.
-- API keys are not exposed to the browser.
-- A clean, repeatable demo and short pitch are ready before the buildathon deadline.
-
----
-
-## 26. Reference Links
-
-- **Bolna AI × Symphony Buildathon:** https://www.bolna.ai/symphony/buildathon
-- **Bolna Web Call SDK (install, secure session minting, lifecycle/events):** https://github.com/bolna-ai/web-call
-- **Bolna API documentation:** https://www.bolna.ai/docs/api-reference/introduction
-- **Bolna custom function calls:** https://www.bolna.ai/docs/tool-calling/custom-function-calls
-- **Bolna function-calling overview:** https://www.bolna.ai/docs/tool-calling/introduction
-
-> **Final recommendation:** win on the complete workflow, not on the number of features. A reliable demo of “upload once → ask out loud → understand the answer → see it appear beside the work” is more persuasive than an unreliable promise of an always-listening, handwriting-perfect AI companion.
+-   Configure Bolna agent.
+-   Implement server-side voice-session creation.
+-   Integrate Web Call SDK lifecycle.
+-   Add mic state, mute/end, reconnect, and typed fallback.
+-   Connect voice to the same tutor orchestrator.
+
+**Exit:** spoken question about the open document yields a spoken answer
+and visible artifact.
+
+### Milestone 6 --- Polish and submission
+
+-   Fix responsive behavior.
+-   Test in a clean browser profile.
+-   Test provider failure and recovery.
+-   Prepare sample PDF and demo script.
+-   Record and submit.
+
+**Exit:** full loop works from a fresh deployed session without manual
+steps.
+
+## 22. Demo Script
+
+Target 90--120 seconds: 1. Open Scribble and create a session. 2. Open a
+sample PDF containing a math problem. 3. Highlight an equation or
+statement. 4. Ask aloud: "Explain why this step is valid. Don't solve
+the rest." 5. Show the tutor using the selection and active page. 6.
+Show the spoken response and structured explanation. 7. Insert the
+explanation onto the whiteboard. 8. Draw a small attempt or add a note.
+9. Ask "Can you check this step?" 10. Request a graph of a supported
+expression. 11. Refresh to demonstrate persistence.
+
+Prove three things: Scribble understands current work; voice is
+connected to real tools; outputs become part of the same workspace. Show
+the product, not infrastructure diagrams.
+
+## 23. Risks and Mitigations
+
+  -----------------------------------------------------------------------
+  Risk                    Severity                Mitigation
+  ----------------------- ----------------------- -----------------------
+  PDF/canvas coordinates  High                    Normalize coordinates
+  drift                                           and test
+                                                  zoom/resize/reload.
+
+  Voice integration takes High                    Prove a minimal Bolna
+  too long                                        call early; retain
+                                                  typed fallback.
+
+  OCR misreads            High                    Confirmation and manual
+  handwriting                                     correction.
+
+  Incorrect math answer   High                    Constrain supported
+                                                  operations and label
+                                                  unverified output.
+
+  Tutor feels generic     High                    Require active-context
+                                                  retrieval and visible
+                                                  artifact/tool action.
+
+  Unsafe tool call        High                    Allowlist, Zod
+                                                  validation, ownership
+                                                  checks, bounded calls.
+
+  Scope expands into      High                    One orchestrator and a
+  multi-agent systems                             small tool registry.
+
+  Autosave overwrites     High                    Version board states
+  newer work                                      and reject stale
+                                                  writes.
+
+  Firestore document      Medium/High             Keep files in Storage;
+  grows too large                                 version/chunk large
+                                                  board data.
+
+  Provider outage during  High                    Sample content, typed
+  demo                                            fallback, retries,
+                                                  preflight.
+
+  Private data leaks      High                    Private storage,
+                                                  short-lived URLs, owner
+                                                  checks, minimal logs.
+
+  Runtime incompatibility Medium                  Keep browser-only
+                                                  libraries client-side;
+                                                  verify SDK requirements
+                                                  early.
+  -----------------------------------------------------------------------
+
+## 24. Definition of Done
+
+-   [ ] Website is one full-stack Next.js application.
+-   [ ] No separate FastAPI, Python, Express, or extension codebase is
+    required.
+-   [ ] User can create a study session.
+-   [ ] PDF opens and navigates in-browser.
+-   [ ] User can annotate PDF and draw on board.
+-   [ ] Board and annotations survive reload.
+-   [ ] Tutor can reference active page/selection.
+-   [ ] Tutor returns structured explanations, not only generic chat.
+-   [ ] At least one agent tool creates a visible artifact.
+-   [ ] One math/graph workflow works with honest verification limits.
+-   [ ] Bolna voice starts/ends reliably on deployed site.
+-   [ ] Typed fallback works when voice fails.
+-   [ ] Secrets stay server-side and cross-user access is rejected.
+-   [ ] Provider, OCR, and save failures have recovery paths.
+-   [ ] Demo works from a fresh deployed session without manual edits.
+
+## 25. Instructions for Coding Agents
+
+1.  Do not change architecture: Next.js App Router is the only
+    application framework and server runtime.
+2.  Do not create `backend/`, `services/api/`, Python requirements,
+    FastAPI, Express, or a second deployment target.
+3.  Put provider integrations and agent tools in `lib/` and `app/api/`.
+4.  Keep Firebase Admin and provider credentials out of client
+    components.
+5.  Use TypeScript throughout.
+6.  Validate external requests and model-generated tool arguments with
+    Zod.
+7.  Build one end-to-end vertical slice before expanding scope.
+8.  Never stub a feature and describe it as implemented.
+9.  Avoid extra frameworks unless they solve a concrete requirement.
+10. AI changes should be previewable, undoable, and non-destructive.
+11. Add tests for authorization, annotation coordinates, board
+    serialization, and tool validation.
+12. Verify current Bolna API/SDK contracts from official docs before
+    integration.
+13. Keep README instructions accurate to the actual code and deployment.
+
+## 26. Final Product Definition
+
+**Scribble is a full-stack Next.js study workspace combining a digital
+whiteboard, an in-browser PDF viewer and annotation layer, and an
+agentic voice tutor. The tutor uses the active page and board context,
+calls constrained tools, and returns explanations, checks, highlights,
+and graphs to the same workspace---without forcing the student to switch
+apps or re-explain their work.**
+
+The MVP succeeds when a student opens a math PDF, annotates it, asks a
+contextual question aloud, sees the tutor respond, places the
+explanation on the board, and later returns to find the work saved.
+
+
+
+What changed
+- Product: Interactive whiteboard + in-browser PDF viewer + agentic tutor.
+- Architecture: One Next.js App Router application using TypeScript, React and server-side Route Handlers.
+- Whiteboard: Drawing, erasing, annotations, equations, graphs and AI-generated artifacts.
+- PDF workspace: In-browser rendering, page navigation, highlighting and annotations.
+- Agent: Context-aware tutoring, tool calling, checking work, generating hints and inserting explanations onto the board.
+- Voice: Bolna integration with explicit microphone controls and typed fallback.
+- Infrastructure: Firebase Auth, Firestore and Storage, with external AI and voice APIs. No separate FastAPI, Python or Express application.
+- Delivery: Prioritized MVP, acceptance criteria, API schemas, security requirements, tests and buildathon demo plan.
