@@ -170,6 +170,16 @@ def create_session():
     return {"session_id": session_id, "status": "created"}
 
 
+@app.delete("/api/v1/sessions/{session_id}", status_code=204)
+def delete_session(session_id: str):
+    """Clear one demo workspace, including its worksheet context and notes."""
+    session_or_404(session_id)
+    for worksheet_id in [key for key, item in Store.worksheets.items() if item["session_id"] == session_id]:
+        del Store.worksheets[worksheet_id]
+    del Store.sessions[session_id]
+    Store.turns.pop(session_id, None)
+
+
 @app.post("/api/v1/sessions/{session_id}/worksheets", status_code=201)
 async def upload_worksheet(session_id: str, file: UploadFile = File(...)):
     session_or_404(session_id)

@@ -15,7 +15,9 @@ function GraphView({ graph }: { graph: Graph }) {
   const { path, xAxis, yAxis } = useMemo(() => {
     const points = graph.points;
     const xs = points.map((p) => p.x); const ys = points.map((p) => p.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    let minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    if (minX === maxX) { minX -= 1; maxX += 1; }
+    if (minY === maxY) { minY -= 1; maxY += 1; }
     const sx = (x: number) => ((x - minX) / (maxX - minX)) * 100;
     const sy = (y: number) => 100 - ((y - minY) / (maxY - minY)) * 100;
     return { path: points.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(2)},${sy(p.y).toFixed(2)}`).join(" "), xAxis: sy(0), yAxis: sx(0) };
@@ -32,6 +34,8 @@ export function Workspace() {
   const [state, setState] = useState<"welcome" | "confirm" | "ready" | "working">("welcome");
   const [voice, setVoice] = useState<"idle" | "connecting" | "active" | "muted" | "error">("idle");
   const [notice, setNotice] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  const [previewName, setPreviewName] = useState("");
   const voiceCall = useRef<ReturnType<typeof createVoiceCall> | undefined>(undefined);
 
   useEffect(() => { void createSession(); }, []);
@@ -62,8 +66,19 @@ export function Workspace() {
     const file = event.target.files?.[0]; if (!file || !sessionId) return;
     if (!/^(image\/png|image\/jpeg|application\/pdf)$/.test(file.type) || file.size > 10 * 1024 * 1024) { setNotice("Choose a PNG, JPG, or PDF under 10 MB."); return; }
     setNotice("Reading your worksheet…");
+    setPreviewName(file.name);
+    setPreviewUrl(file.type === "application/pdf" ? undefined : URL.createObjectURL(file));
     try { const form = new FormData(); form.append("file", file); const data = await api(`/api/v1/sessions/${sessionId}/worksheets`, { method: "POST", body: form }); const parsed = await api(`/api/v1/worksheets/${data.worksheet_id}`); setWorksheet(parsed); setProblem(parsed.problem_text); setState("confirm"); setNotice("Review the extraction before starting your tutor session."); }
     catch (e) { setNotice(e instanceof Error ? e.message : "That file did not upload."); }
+  }
+  async function clearWorkspace() {
+    const oldSession = sessionId;
+    void voiceCall.current?.stop(); voiceCall.current = undefined;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setVoice("idle"); setWorksheet(undefined); setTurns([]); setProblem(SAMPLE); setPreviewUrl(undefined); setPreviewName(""); setState("welcome");
+    if (oldSession) { try { await api(`/api/v1/sessions/${oldSession}`, { method: "DELETE" }); } catch { /* A stopped API should not prevent a fresh workspace. */ } }
+    await createSession();
+    setNotice("This workspace was cleared. Upload a new worksheet or use the sample.");
   }
   async function confirm() {
     if (!sessionId || !worksheet || problem.trim().length < 3) return;
@@ -100,12 +115,12 @@ export function Workspace() {
     <div className="workspace">
       <section className="paper worksheet"><div className="panel-top"><span>WORKSHEET</span><span className="small-status">{state === "ready" ? "Confirmed" : "Waiting for review"}</span></div>
         {state === "welcome" && <div className="empty"><div className="upload-icon">↑</div><h2>Bring in your work</h2><p>PNG, JPG, or PDF · up to 10 MB</p><label className="button primary">Upload worksheet<input type="file" accept="image/png,image/jpeg,application/pdf" onChange={onUpload} hidden /></label><button className="text-button" onClick={useSample}>Try the sample worksheet</button></div>}
-        {state !== "welcome" && worksheet && <><div className="worksheet-preview"><div className="handwrite">f(x) = sin(x) + x/3</div><div className="scribble-line" /><div className="ghost-work">Find the shape of the curve<br />and explain the next step.</div></div><div className="extraction"><label>Extracted problem</label><textarea value={problem} disabled={state === "ready" || state === "working"} onChange={(e) => setProblem(e.target.value)} />{worksheet.ambiguities.length > 0 && state !== "ready" && <p className="ambiguity">Needs review: {worksheet.ambiguities[0].reason}</p>}{state === "confirm" && <button className="button primary full" onClick={confirm}>Use this problem</button>}</div></>}
+        {state !== "welcome" && worksheet && <><div className="worksheet-preview">{previewUrl ? <img className="uploaded-preview" src={previewUrl} alt={`Preview of ${previewName || "uploaded worksheet"}`} /> : previewName ? <div className="file-preview"><b>{previewName}</b><span>PDF uploaded — review the extracted problem below.</span></div> : <><div className="handwrite">f(x) = sin(x) + x/3</div><div className="scribble-line" /><div className="ghost-work">Find the shape of the curve<br />and explain the next step.</div></>}</div><div className="extraction"><label>Extracted problem</label><textarea value={problem} disabled={state === "ready" || state === "working"} onChange={(e) => setProblem(e.target.value)} />{worksheet.ambiguities.length > 0 && state !== "ready" && <p className="ambiguity">Needs review: {worksheet.ambiguities[0].reason}</p>}{state === "confirm" && <button className="button primary full" onClick={confirm}>Use this problem</button>}</div></>}
       </section>
       <section className="paper notebook"><div className="panel-top"><span>SCRIBBLE&apos;S NOTES</span><span className="small-status">{state === "working" ? "Thinking…" : `${turns.length} notes`}</span></div>
         {!turns.length ? <div className="notes-empty"><span>✦</span><h2>Your explanation will land here.</h2><p>Ask for a hint, a concept explanation, a work check, or a graph.</p></div> : <div className="turns">{turns.map((turn) => <article className="turn" key={turn.turn_id}><div className="turn-heading"><span>{turn.artifact.title}</span><em>{turn.verification.status.replace("_", " ")}</em></div><p>{turn.spoken_response}</p>{turn.artifact.steps.map((step, index) => <div className="step" key={index}><b>{index + 1}</b><span>{step.text}</span></div>)}{turn.artifact.graph && <GraphView graph={turn.artifact.graph} />}</article>)}</div>}
       </section>
     </div>
-    <footer className="controls"><div className="voice-buttons"><button className="button voice" onClick={startVoice} disabled={state !== "ready" || voice === "connecting" || voice === "active" || voice === "muted"}>{voice === "active" ? "Voice active" : "Start voice"}</button><button className="button muted" onClick={toggleMute} disabled={voice !== "active" && voice !== "muted"}>{voice === "muted" ? "Unmute" : "Mute"}</button><button className="button muted" onClick={endVoice} disabled={voice === "idle"}>End</button></div><form onSubmit={ask}><input value={question} onChange={(e) => setQuestion(e.target.value)} disabled={state !== "ready"} placeholder="Ask about the problem you’re working on…" /><button className="send" disabled={state !== "ready" || !question.trim()} aria-label="Send question">↑</button></form></footer>
+    <footer className="controls"><div className="voice-buttons"><button className="button voice" onClick={startVoice} disabled={state !== "ready" || voice === "connecting" || voice === "active" || voice === "muted"}>{voice === "active" ? "Voice active" : "Start voice"}</button><button className="button muted" onClick={toggleMute} disabled={voice !== "active" && voice !== "muted"}>{voice === "muted" ? "Unmute" : "Mute"}</button><button className="button muted" onClick={endVoice} disabled={voice === "idle"}>End</button></div><form onSubmit={ask}><input value={question} onChange={(e) => setQuestion(e.target.value)} disabled={state !== "ready"} placeholder="Ask about the problem you’re working on…" /><button className="send" disabled={state !== "ready" || !question.trim()} aria-label="Send question">↑</button></form><div className="prompt-row" aria-label="Demo prompts">{["Explain this step", "Give me a hint", "Plot this function"].map((prompt) => <button type="button" className="prompt" key={prompt} disabled={state !== "ready"} onClick={() => setQuestion(prompt)}>{prompt}</button>)}</div><button className="clear" onClick={() => void clearWorkspace()} aria-label="Clear worksheet and notes">Clear</button></footer>
   </main>;
 }
