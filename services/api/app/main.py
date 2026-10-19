@@ -67,6 +67,12 @@ class GraphRequest(BaseModel):
     x_max: float = Field(default=6.28, ge=-100, le=100)
 
 
+class PageContext(BaseModel):
+    problem_text: str = Field(min_length=3, max_length=12000)
+    source_url: str | None = Field(default=None, max_length=2048)
+    source_title: str | None = Field(default=None, max_length=500)
+
+
 def session_or_404(session_id: str) -> dict[str, Any]:
     item = Store.sessions.get(session_id)
     if not item: raise error(404, "session_not_found", "This Scribble session no longer exists.")
@@ -149,7 +155,8 @@ def build_turn(request: TutorRequest, worksheet: dict[str, Any]) -> dict[str, An
         return make_turn(request, intent, "Start by naming the function and checking what happens at a simple value such as x equals zero. Then tell me what you notice.", "hint", "A next-step hint", [{"text": "Substitute x = 0 before expanding or simplifying."}], "not_applicable")
     if intent == "check_work":
         return make_turn(request, intent, "I can compare that line with the worksheet, but this demo cannot verify handwritten steps automatically. I have kept your selected step visible for a careful check.", "mistake", "Check this step", [{"text": request.focus_text or ""}], "unverified")
-    return make_turn(request, intent, f"Let’s connect this to your worksheet: {problem} Start by identifying what each term contributes, then test a simple input to see the structure.", "concept", "Why this step works", [{"text": "Read the expression as a combination of simpler pieces."}, {"text": "Try x = 0, then compare how each piece changes as x moves away from zero."}], "not_applicable")
+    context_preview = re.sub(r"\s+", " ", problem).strip()[:500]
+    return make_turn(request, intent, f"Let’s connect this to the attached context: {context_preview} Start by identifying what each term contributes, then test a simple input to see the structure.", "concept", "Why this step works", [{"text": "Read the expression as a combination of simpler pieces."}, {"text": "Try x = 0, then compare how each piece changes as x moves away from zero."}], "not_applicable")
 
 
 def make_turn(request: TutorRequest, intent: str, spoken: str, artifact_type: str, title: str, steps: list[dict[str, str]], verification: str, graph_data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -173,6 +180,23 @@ async def upload_worksheet(session_id: str, file: UploadFile = File(...)):
     worksheet_id = str(uuid.uuid4())
     Store.worksheets[worksheet_id] = {"id": worksheet_id, "session_id": session_id, "mime_type": file.content_type, "parse_status": "needs_confirmation", **infer_parse(file.filename or "worksheet")}
     return {"worksheet_id": worksheet_id, "status": "needs_confirmation", "preview_url": None}
+
+
+@app.post("/api/v1/sessions/{session_id}/context", status_code=201)
+def attach_page_context(session_id: str, payload: PageContext):
+    """Attach extracted visible page text from the extension as confirmed context."""
+    session_or_404(session_id)
+    worksheet_id = str(uuid.uuid4())
+    Store.worksheets[worksheet_id] = {
+        "id": worksheet_id, "session_id": session_id, "mime_type": "text/plain",
+        "parse_status": "ready", "problem_text": payload.problem_text,
+        "confirmed_problem_text": payload.problem_text, "expressions": [], "latex": [],
+        "variables": [], "ambiguities": [], "confidence": 1.0,
+        "source_url": payload.source_url, "source_title": payload.source_title,
+        "confirmed_at": now(),
+    }
+    Store.sessions[session_id]["active_worksheet_id"] = worksheet_id
+    return {"worksheet_id": worksheet_id, "status": "ready"}
 
 
 @app.get("/api/v1/worksheets/{worksheet_id}")
