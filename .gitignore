@@ -5,3 +5,5 @@ node_modules/
 __pycache__/
 *.py[cod]
 dist/
+*.tsbuildinfo
+package-lock.json
