@@ -155,8 +155,7 @@ def build_turn(request: TutorRequest, worksheet: dict[str, Any]) -> dict[str, An
         return make_turn(request, intent, "Start by naming the function and checking what happens at a simple value such as x equals zero. Then tell me what you notice.", "hint", "A next-step hint", [{"text": "Substitute x = 0 before expanding or simplifying."}], "not_applicable")
     if intent == "check_work":
         return make_turn(request, intent, "I can compare that line with the worksheet, but this demo cannot verify handwritten steps automatically. I have kept your selected step visible for a careful check.", "mistake", "Check this step", [{"text": request.focus_text or ""}], "unverified")
-    context_preview = re.sub(r"\s+", " ", problem).strip()[:500]
-    return make_turn(request, intent, f"Let’s connect this to the attached context: {context_preview} Start by identifying what each term contributes, then test a simple input to see the structure.", "concept", "Why this step works", [{"text": "Read the expression as a combination of simpler pieces."}, {"text": "Try x = 0, then compare how each piece changes as x moves away from zero."}], "not_applicable")
+    return make_turn(request, intent, "I have the page context. Start by identifying what each term contributes, then test a simple input to see the structure.", "concept", "Why this step works", [{"text": "Read the expression as a combination of simpler pieces."}, {"text": "Try x = 0, then compare how each piece changes as x moves away from zero."}], "not_applicable")
 
 
 def make_turn(request: TutorRequest, intent: str, spoken: str, artifact_type: str, title: str, steps: list[dict[str, str]], verification: str, graph_data: dict[str, Any] | None = None) -> dict[str, Any]:

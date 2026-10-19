@@ -1,9 +1,16 @@
 const API = "http://localhost:8000";
 
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return;
-  await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["overlay.js"] });
-  chrome.tabs.sendMessage(tab.id, { type: "scribble-toggle" }).catch(() => {});
+  if (!tab.id || !tab.url || !/^https?:\/\//.test(tab.url)) {
+    // Chrome blocks injection into chrome://, extension, and browser settings pages.
+    return;
+  }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["overlay.js"] });
+    await chrome.tabs.sendMessage(tab.id, { type: "scribble-toggle" });
+  } catch {
+    // A page may navigate between the click and injection; silently ignore it.
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
