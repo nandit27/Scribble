@@ -6,7 +6,7 @@ Scribble is a worksheet-aware, voice-first math tutor. The current MVP provides 
 
 1. Copy `.env.example` to `.env` and set the values you have available.
 2. Install the web dependencies: `npm install`.
-3. Install API dependencies: `python -m pip install -r services/api/requirements.txt`.
+3. Install API dependencies: `python -m pip install -r services/requirements.txt`.
 4. In one terminal run `npm run api`; in another run `npm run dev`.
 5. Open `http://localhost:3000` and choose **Try the sample worksheet**.
 
