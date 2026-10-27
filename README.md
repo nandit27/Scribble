@@ -1,53 +1,78 @@
 # Scribble
 
-### Your voice-powered AI math tutor, right inside your notebook.
+### The math workspace that can see the page, your notes, and the next step.
 
-Scribble is a voice-first math tutoring workspace built for the **Bolna AI × Y Combinator Symphony Buildathon**. A student uploads a worksheet once, confirms the extracted problem, asks a question out loud, and receives both a spoken explanation and a structured visual note beside the original work.
+Scribble brings a selectable PDF reader, an expressive whiteboard, and a voice-ready tutor into one calm study surface. Highlight the exact line that is confusing, ask naturally, then keep the answer as an artifact beside your work.
 
-<img width="1775" height="866" alt="image" src="https://github.com/user-attachments/assets/f58f7103-fdf6-415a-940a-6a5c5290f832" />
+> **Read the problem → work it out → ask at the stuck point → keep the explanation.**
 
+<img width="1775" height="866" alt="Scribble workspace with a source document and whiteboard" src="https://github.com/user-attachments/assets/f58f7103-fdf6-415a-940a-6a5c5290f832" />
 
-> **Upload once → ask naturally → understand the step → see it appear beside the work.**
+## Why Scribble
 
-Scribble is not a generic chatbot with a microphone. Voice is the primary interaction, and each tutor turn can produce an inspectable artifact: a hint, concept explanation, work-check note, equation step, or graph.
+Most tutor chats lose the thing you are looking at. Scribble keeps it in view.
 
-## Hackathon demo
+- **Document-aware:** PDF pages render inside Scribble, with selectable text. The selection is the tutor's first source of context; otherwise it uses visible-page text.
+- **Board-native:** Draw, erase, add notes, undo, redo, zoom, pan, and keep tutor artifacts directly on the board.
+- **Inspectable help:** Explanations, hints, work checks, and graphs become durable notes—not disappearing chat bubbles.
+- **Voice when it helps:** Bolna voice sessions receive the same worksheet, selection, and opted-in board context as typed questions.
+- **Safe graphing:** Graph requests go through an allowlisted SymPy endpoint and return numeric points rendered on the board—not a generated image.
+- **Your work stays yours:** Practice completion creates visibly labeled vector strokes only from a student-confirmed target. It never imitates handwriting or fabricates a submission.
 
-1. Open the web app and choose **Try the sample worksheet** (or upload a PNG, JPG, or PDF under 10 MB).
-2. Review and confirm the extracted problem.
-3. Click **Start voice** and ask, “Can you explain the next step?”
-4. Ask a follow-up without re-uploading the worksheet.
-5. Watch the structured explanation or graph appear in **Scribble’s Notes**.
+## The study loop
 
-The typed question field is an intentional fallback for microphone or network issues. Seeded prompts include **Explain this step**, **Give me a hint**, and **Plot this function**.
+```text
+Open a PDF or blank board
+        ↓
+Select the exact line (or use the visible page)
+        ↓
+Ask, speak, graph, or enable playful roast mode
+        ↓
+Keep a visual artifact beside your working
+```
 
-## Current MVP
+### Try these prompts
 
-- Worksheet upload and editable extraction confirmation.
-- Persistent worksheet context for the current browser session.
-- Bolna Web Call with start, mute, unmute, and end controls.
-- Typed fallback using the same tutoring endpoint.
-- Structured tutor artifacts for explanations, hints, work checks, and graphs.
-- Safe single-variable graphing for `x`, arithmetic, powers, `sin`, `cos`, `tan`, and `exp`.
-- Verification labels distinguishing graph output from unverified handwriting checks.
-- A **Clear** action that ends voice and removes the current in-memory workspace.
+| Goal | Try asking |
+| --- | --- |
+| Understand a line | “Why can I divide by this term?” |
+| Get unstuck | “Give me a hint, not the answer.” |
+| Plot safely | “Graph `sin(x) + x/3`.” |
+| Check work | “Check this substitution.” |
+| Practice notation | Confirm a writing target, then ask “Complete this practice writing.” |
+| Add levity | Toggle **Roast**, then ask about your work. |
 
 ## Architecture
 
 ```text
-Browser (Next.js) → Bolna Web Call
-        │                  │
-        └── FastAPI tutoring service
-            ├─ session + worksheet context
-            ├─ structured tutor turns
-            └─ validated SymPy graph generation
+                  ┌──────────────────┐
+                  │  Next.js browser │
+                  │ PDF.js + board   │
+                  └───────┬──────────┘
+              selection / │ \ strokes + notes
+                        context
+                        │   \──────────────┐
+                        ▼                  ▼
+             ┌─────────────────┐   ┌─────────────────┐
+             │ FastAPI tutor   │   │ Bolna Web Call  │
+             │ session/context │   │ voice session   │
+             │ SymPy graphs    │   └─────────────────┘
+             └─────────────────┘
+                        │
+                        ▼
+             ┌─────────────────┐
+             │ Jev decision    │
+             │ router (server) │
+             └─────────────────┘
 ```
 
-Bolna receives the opaque `scribble_session_id` as context. Its `tutor_turn` custom function calls the authenticated FastAPI tool endpoint, which resolves the active worksheet server-side and persists the structured result. The browser polls for that same result so spoken and visual responses stay aligned.
+The browser persists an opaque FastAPI session and active worksheet ID with the workspace. Before a Bolna call begins, Scribble refreshes the server-side worksheet from selected text, the visible PDF page, and an opted-in board summary, then supplies the real session and worksheet IDs to voice.
 
-## Run locally
+Jev is an optional server-side router. It chooses one typed next action—`complete_handwriting`, `draw_graph`, `explain`, or `roast`—only when confident enough. Low-confidence, unavailable, or unconfigured Jev calls fall back to the same deterministic local policy.
 
-Requirements: Node.js 18+, Python 3.11+, and a Bolna agent/API key for live voice (optional; typed tutoring works without them).
+## Run it locally
+
+**Requirements:** Node.js 18+ and Python 3.11+. Bolna, Jev, and Supabase are optional; the local board and typed fallback still run without their credentials.
 
 ```bash
 npm install
@@ -55,61 +80,76 @@ python -m pip install -r services/requirements.txt
 cp .env.example .env
 ```
 
-On Windows PowerShell, use `Copy-Item .env.example .env` instead.
+On Windows PowerShell:
 
-In one terminal run `npm run api`; in another run `npm run dev`. Open [http://localhost:3000](http://localhost:3000). The API runs on [http://localhost:8000](http://localhost:8000).
+```powershell
+Copy-Item .env.example .env
+```
 
-The API uses in-memory data for the demo. Restarting it clears sessions and uploaded worksheets; the app's **Clear** control also removes the current demo workspace. `BOLNA_API_KEY` stays in the Next.js server route and is never sent to the client. The current API relies on opaque, unguessable session IDs for the demo; add authenticated ownership checks before production.
+Start both services:
 
-## Bolna setup
+```bash
+# terminal 1 — FastAPI tutor + graph service
+npm run api
 
-Set `BOLNA_API_KEY`, `BOLNA_AGENT_ID`, and `BOLNA_TOOL_SHARED_SECRET`. Configure Bolna's `tutor_turn` custom function to call `POST /api/v1/tools/tutor-turn`, pass `X-Scribble-Tool-Secret`, and supply `scribble_session_id` as a context variable. Typed fallback calls its separately scoped session endpoint. The web route mints a short-lived voice session. Connect its returned payload to the currently installed `@bolna/web-call` SDK version during deployment.
+# terminal 2 — web workspace
+npm run dev
+```
 
-## Bolna configuration
+Open [localhost:3000](http://localhost:3000). The tutor service runs at [localhost:8000](http://localhost:8000).
 
-Set `BOLNA_API_KEY`, `BOLNA_AGENT_ID`, and `BOLNA_TOOL_SHARED_SECRET` in `.env`. Configure the agent custom function with `POST /api/v1/tools/tutor-turn`, the `X-Scribble-Tool-Secret` header, `scribble_session_id` context, and the student request as `question`. Never expose Bolna credentials through `NEXT_PUBLIC_` variables.
+## Configuration
 
-## Accounts and sync (Supabase)
+| Variable | Needed for | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | Contextual typed tutoring and validated graphs | Defaults to `http://localhost:8000` in the example. |
+| `BOLNA_API_KEY`, `BOLNA_AGENT_ID` | Voice sessions | Kept in the Next.js server route. |
+| `BOLNA_TOOL_SHARED_SECRET` | Bolna custom tutor tool | Used to authenticate calls to FastAPI. |
+| `JEV_API_KEY` | Jev decision routing | Server-only; never use a `NEXT_PUBLIC_` prefix. |
+| `JEV_CONFIDENCE_THRESHOLD` | Automatic Jev actions | Defaults to `0.8`. |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional account sync | Enables magic-link auth and private PDF syncing. |
 
-Signing in is optional. Signed-out users keep working entirely in local-only mode (localStorage), exactly as before. Once signed in:
+## Voice + Bolna setup
 
-- The current session (strokes, notes, tutor turns, view state) syncs to a `sessions` row scoped to that user via row-level security.
-- Uploaded PDFs sync to a private `pdfs` Storage bucket, so reopening the session on another device restores the actual file, not just its name.
-- On sign-in, whichever copy (local or remote) has the newer `updated_at` wins, so you never silently lose the most recent work on either device.
+Set `BOLNA_API_KEY`, `BOLNA_AGENT_ID`, and `BOLNA_TOOL_SHARED_SECRET`. Configure the Bolna `tutor_turn` custom function to call:
 
-To enable it:
+```text
+POST /api/v1/tools/tutor-turn
+X-Scribble-Tool-Secret: <BOLNA_TOOL_SHARED_SECRET>
+```
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Run `docs/supabase-schema.sql` in the Supabase SQL editor (creates the `sessions` table, its RLS policies, and the private `pdfs` bucket + policies).
-3. In **Authentication → Providers**, email OTP (magic link) is enabled by default; no extra config needed for the built-in "Sign in" panel.
-4. Add to `.env.local`:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=your-project-url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-   ```
-5. Restart `npm run dev`. The header's **Sign in** control now sends real magic links.
+Pass `scribble_session_id` as a context variable and the student's request as `question`. Scribble supplies the active opaque session ID when it opens a voice session.
 
-Without those two variables set, the app runs exactly as it does today — the **Sign in** button is still visible (consistent with how **Listen** behaves without Bolna credentials) but explains that accounts aren't configured yet if you try it.
+## Optional account sync
 
-**Known scope boundary:** the schema models one synced session per user, matching the app's current single-session design. Multiple named sessions per account (session list) is a natural next step once this is in place.
+Signed-out students work locally with browser storage. With Supabase configured, the latest workspace state (strokes, notes, tutor turns, layout, and API-session metadata) syncs per user; PDFs live in a private Storage bucket.
 
-## Useful API routes
+1. Create a Supabase project.
+2. Run [docs/supabase-schema.sql](docs/supabase-schema.sql) in the SQL editor.
+3. Enable email OTP in **Authentication → Providers**.
+4. Add the public Supabase URL and anon key to `.env` or `.env.local`.
 
+When local and remote copies differ, the newest `updated_at` wins.
 
-| Route                                   | Purpose                          |
-| --------------------------------------- | -------------------------------- |
-| `POST /api/v1/sessions`                 | Create a tutoring session        |
-| `POST /api/v1/sessions/{id}/worksheets` | Upload a worksheet               |
-| `POST /api/v1/worksheets/{id}/confirm`  | Confirm extracted problem text   |
-| `POST /api/v1/sessions/{id}/tutor-turn` | Typed fallback tutor request     |
-| `POST /api/v1/tools/tutor-turn`         | Bolna custom-tool request        |
-| `GET /api/v1/sessions/{id}/turns`       | Retrieve notebook artifacts      |
-| `POST /api/v1/worksheets/{id}/graph`    | Validate and graph an expression |
+## API surface
 
+| Route | Purpose |
+| --- | --- |
+| `POST /api/v1/sessions` | Create an opaque tutoring session |
+| `POST /api/v1/sessions/{id}/context` | Attach visible/selected study context as the active worksheet |
+| `POST /api/v1/sessions/{id}/tutor-turn` | Typed tutor turn |
+| `POST /api/v1/tools/tutor-turn` | Authenticated Bolna custom-tool turn |
+| `GET /api/v1/sessions/{id}/turns` | Read persisted tutor artifacts |
+| `POST /api/v1/worksheets/{id}/graph` | Validate and plot a supported expression |
+| `POST /api/jev-decision` | Server-side Jev action decision |
 
-## Honest limitations
+## Safety boundaries
 
-This is a hackathon demo, not a production education platform yet. Sessions, worksheets, and turns are held in memory; uploaded binaries are validated in memory; and extraction uses a transparent sample fallback until a vision/OCR provider is configured. Handwritten work is not automatically verified, and graphing is allowlisted to prevent arbitrary code execution.
+- Graph expressions are allowlisted to a small single-variable math surface: `x`, arithmetic, powers, `sin`, `cos`, `tan`, and `exp`.
+- Handwriting completion is practice-only: it needs an exact, reconfirmed student target and draws generic vector practice glyphs in blue.
+- Roast mode is opt-in and intentionally playful and constructive.
+- The FastAPI demo store is in memory. A service restart invalidates its sessions; Scribble recreates and reattaches context on the next request.
+- The current API uses opaque IDs for the demo. Production should add authenticated ownership checks and durable storage.
 
 ## Verification
 
@@ -118,12 +158,11 @@ npm run build
 python -m py_compile services/main.py
 ```
 
-Recommended smoke test: load the sample, confirm it, ask for a hint, ask a follow-up, request a graph, then mute and end the session.
+## Built with
 
-## Buildathon links
-
-- [Bolna AI × Symphony Buildathon](https://www.bolna.ai/symphony/buildathon)
-- [Bolna Web Call SDK](https://github.com/bolna-ai/web-call)
-- [Bolna API documentation](https://www.bolna.ai/docs/api-reference/introduction)
-- [Bolna custom function calls](https://www.bolna.ai/docs/tool-calling/custom-function-calls)
-
+- [Next.js](https://nextjs.org/) + React
+- [PDF.js](https://mozilla.github.io/pdf.js/)
+- [FastAPI](https://fastapi.tiangolo.com/) + SymPy
+- [Bolna Web Call](https://github.com/bolna-ai/web-call)
+- [Jev](https://www.getjevai.com/docs)
+- [Supabase](https://supabase.com/)
