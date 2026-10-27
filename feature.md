@@ -19,4 +19,4 @@ This file captures product requests as they arise and tracks their delivery.
 ## Planned — service integration
 
 - [x] Use the FastAPI session/context/tutor-turn flow for typed questions when configured; retain a local fallback when the service is unavailable.
-- [ ] Persist a real API session ID with the browser workspace and provide its worksheet/context to Bolna.
+- [x] Persist the opaque FastAPI session and active worksheet IDs with the browser workspace, restore them after reload, and pass both the ID and current context to Bolna. The in-memory demo service automatically recreates the API session after a service restart.

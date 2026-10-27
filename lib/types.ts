@@ -32,6 +32,9 @@ export type SavedState = {
   pdfName?: string;
   pdfPath?: string;
   boardContextEnabled?: boolean;
+  /** Opaque ID of the matching FastAPI tutoring session. */
+  apiSessionId?: string;
+  apiWorksheetId?: string;
 };
 
 export type View = "welcome" | "pdf" | "notes" | "split";

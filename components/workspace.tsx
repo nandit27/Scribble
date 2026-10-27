@@ -5,7 +5,7 @@ import { createVoiceCall, VoiceState } from "../lib/bolna-client";
 import { makeId } from "../lib/id";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
-import { askTutorService } from "../lib/tutor-api";
+import { askTutorService, ensureTutorContext } from "../lib/tutor-api";
 import type { Artifact, BoardNote, Point, SavedState, Stroke, Tool, Turn, View } from "../lib/types";
 import { AppHeader, SyncStatus } from "./app-header";
 import { WelcomeScreen } from "./welcome-screen";
@@ -70,12 +70,13 @@ export function Workspace() {
 
   const [pdfPath, setPdfPath] = useState<string | undefined>(undefined);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [apiSessionId, setApiSessionId] = useState<string | null>(null);
+  const [apiWorksheetId, setApiWorksheetId] = useState<string | null>(null);
 
   const toast = useToast();
   const auth = useSupabaseAuth();
   const mergedUserId = useRef<string | null>(null);
   const voiceCall = useRef<ReturnType<typeof createVoiceCall> | null>(null);
-  const apiSessionId = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +95,8 @@ export function Workspace() {
         setSplitRatio(saved.splitRatio ?? 0.5);
         setLastPdfName(saved.pdfName || "");
         setBoardContextEnabled(saved.boardContextEnabled ?? true);
+        setApiSessionId(saved.apiSessionId ?? null);
+        setApiWorksheetId(saved.apiWorksheetId ?? null);
         if ((saved.strokes?.length || saved.notes?.length || saved.turns?.length)) toast.show("Reopened your last saved session.");
       }
     } catch {
@@ -113,7 +116,7 @@ export function Workspace() {
       const now = new Date().toISOString();
       setUpdatedAt(now);
       const payload: SavedState = {
-        strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, pdfPath, boardContextEnabled,
+        strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, pdfPath, boardContextEnabled, apiSessionId: apiSessionId ?? undefined, apiWorksheetId: apiWorksheetId ?? undefined,
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
       if (auth.user) {
@@ -124,7 +127,7 @@ export function Workspace() {
     }, 300);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strokes, notes, turns, page, zoom, sessionName, splitRatio, lastPdfName, pdfPath, boardContextEnabled, auth.user]);
+  }, [strokes, notes, turns, page, zoom, sessionName, splitRatio, lastPdfName, pdfPath, boardContextEnabled, apiSessionId, apiWorksheetId, auth.user]);
 
   // On sign-in: adopt whichever copy (local or remote) is more recently updated, so work from any
   // device wins instead of silently clobbering the other. Signed-out users are unaffected (local-only).
@@ -151,6 +154,8 @@ export function Workspace() {
         setSplitRatio(remote.splitRatio ?? 0.5);
         setLastPdfName(remote.pdfName || "");
         setBoardContextEnabled(remote.boardContextEnabled ?? true);
+        setApiSessionId(remote.apiSessionId ?? null);
+        setApiWorksheetId(remote.apiWorksheetId ?? null);
         setUpdatedAt(remote.updatedAt);
         if (remote.pdfPath) {
           setPdfPath(remote.pdfPath);
@@ -163,7 +168,7 @@ export function Workspace() {
         const now = new Date().toISOString();
         setUpdatedAt(now);
         const ok = await pushRemoteSession(userId, {
-          strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, pdfPath, boardContextEnabled,
+          strokes, notes, turns, page, zoom, sessionName, updatedAt: now, splitRatio, pdfName: lastPdfName, pdfPath, boardContextEnabled, apiSessionId: apiSessionId ?? undefined, apiWorksheetId: apiWorksheetId ?? undefined,
         });
         setSyncStatus(ok ? "synced" : "error");
         toast.show(ok ? "Signed in. This session is now synced to your account." : "Signed in, but syncing failed. Your work is still saved locally.");
@@ -222,8 +227,8 @@ export function Workspace() {
     let artifact = makeArtifact(asked, context);
     let turn: Turn = { id: makeId(), question: asked, response: artifact.body, artifact, createdAt: new Date().toISOString() };
     try {
-      const remote = roastMode ? null : await askTutorService(apiSessionId.current, asked, context);
-      if (remote) { apiSessionId.current = remote.sessionId; turn = remote.turn; artifact = remote.turn.artifact; }
+      const remote = roastMode ? null : await askTutorService(apiSessionId, asked, context);
+      if (remote) { setApiSessionId(remote.sessionId); setApiWorksheetId(remote.worksheetId); turn = remote.turn; artifact = remote.turn.artifact; }
     } catch { toast.show("Tutor service is offline, so Scribble used its local study helper."); }
     setTurns((v) => [...v, turn]);
     insertArtifact(artifact);
@@ -271,7 +276,13 @@ export function Workspace() {
     setVoice("connecting");
     try {
       const boardSummary = boardContextEnabled ? [notes.slice(-4).map((note) => note.text).join(" "), `${strokes.length} strokes on the board`].filter(Boolean).join(". ") : "";
-      const call = createVoiceCall(apiSessionId.current ?? "local-demo-session", {
+      const context = { selectedText: selectedPdfText, visiblePageText, boardSummary };
+      const attached = await ensureTutorContext(apiSessionId, context);
+      if (!attached?.worksheetId) throw new Error("Add document or board context before starting voice.");
+      setApiSessionId(attached.sessionId);
+      setApiWorksheetId(attached.worksheetId);
+      const call = createVoiceCall(attached.sessionId, {
+        worksheet_id: attached.worksheetId,
         selected_text: selectedPdfText.slice(0, 2000),
         visible_page_text: selectedPdfText ? "" : visiblePageText.slice(0, 4000),
         board_context: boardSummary.slice(0, 3000),
