@@ -6,6 +6,7 @@ import type { VoiceState } from "../lib/bolna-client";
 export function TutorControls({
   askOpen, onOpenAsk, onCloseAsk, question, onQuestionChange, onAsk, busy,
   current, onDismissCurrent, live, voiceState, onStartVoice, onEndVoice, onToggleMute, roastMode, onToggleRoastMode,
+  handwritingTarget, onHandwritingTargetChange, handwritingConfirmed, onHandwritingConfirmedChange,
 }: {
   askOpen: boolean;
   onOpenAsk: () => void;
@@ -23,6 +24,10 @@ export function TutorControls({
   onToggleMute: () => void;
   roastMode: boolean;
   onToggleRoastMode: () => void;
+  handwritingTarget: string;
+  onHandwritingTargetChange: (value: string) => void;
+  handwritingConfirmed: boolean;
+  onHandwritingConfirmedChange: (value: boolean) => void;
 }) {
   return (
     <div className="tutor-controls">
@@ -52,6 +57,8 @@ export function TutorControls({
             placeholder="Explain, hint, check, or plot"
             aria-label="Ask Scribble"
           />
+          <input value={handwritingTarget} onChange={(e) => onHandwritingTargetChange(e.target.value)} placeholder="Optional: exact writing target" aria-label="Confirmed handwriting target" />
+          <label className="tutor-confirm"><input type="checkbox" checked={handwritingConfirmed} onChange={(e) => onHandwritingConfirmedChange(e.target.checked)} /> I confirm this is practice text</label>
         </form>
       ) : current ? (
         <div className="tutor-now">

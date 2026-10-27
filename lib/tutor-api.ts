@@ -20,8 +20,8 @@ async function request(path: string, init?: RequestInit) {
   return response.json();
 }
 
-export async function askTutorService(sessionId: string | null, question: string, context: TutorContext): Promise<{ sessionId: string; worksheetId: string; turn: Turn } | null> {
-  const wantsGraph = /\b(plot|graph|sketch)\b/i.test(question);
+export async function askTutorService(sessionId: string | null, question: string, context: TutorContext, forceGraph = false): Promise<{ sessionId: string; worksheetId: string; turn: Turn } | null> {
+  const wantsGraph = forceGraph || /\b(plot|graph|sketch)\b/i.test(question);
   const expression = wantsGraph ? graphExpression(question, context) : null;
   const contextForRequest = wantsGraph && expression && !(context.selectedText || context.visiblePageText || context.boardSummary)
     ? { ...context, visiblePageText: `Graph the function f(x) = ${expression}.` }

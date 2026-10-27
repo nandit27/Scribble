@@ -11,8 +11,8 @@ This file captures product requests as they arise and tracks their delivery.
 
 ## Planned — decision-led tutor actions
 
-- [ ] Add a server-side Jev decision adapter that chooses `complete_handwriting`, `draw_graph`, `explain`, or `roast`, with a confidence threshold and deterministic fallback.
-- [ ] For handwriting completion, generate vector strokes on the board using an explicit student-confirmed target—not a raster image and never a forged submission.
+- [x] Add a server-side Jev decision adapter that chooses `complete_handwriting`, `draw_graph`, `explain`, or `roast`, with a confidence threshold and deterministic fallback.
+- [x] For handwriting completion, generate visibly labeled vector practice strokes only from an explicit student-confirmed target—never a raster image or a forged submission.
 - [x] Route graph requests through the validated SymPy graph endpoint and render returned points directly on the board (never as an image).
 - [x] Add an opt-in local roast mode with a playful, constructive tone and an immediate off switch.
 

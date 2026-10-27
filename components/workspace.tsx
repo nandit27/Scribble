@@ -6,6 +6,8 @@ import { makeId } from "../lib/id";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
 import { askTutorService, ensureTutorContext } from "../lib/tutor-api";
+import { decideTutorAction } from "../lib/jev-client";
+import { targetToPracticeStrokes } from "../lib/handwriting";
 import type { Artifact, BoardNote, Point, SavedState, Stroke, Tool, Turn, View } from "../lib/types";
 import { AppHeader, SyncStatus } from "./app-header";
 import { WelcomeScreen } from "./welcome-screen";
@@ -32,6 +34,8 @@ export function Workspace() {
   const [width, setWidth] = useState(3);
   const [question, setQuestion] = useState("");
   const [roastMode, setRoastMode] = useState(false);
+  const [handwritingTarget, setHandwritingTarget] = useState("");
+  const [handwritingConfirmed, setHandwritingConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState<VoiceState>("idle");
 
@@ -192,6 +196,13 @@ export function Workspace() {
   }, [view, strokes, history, future]);
 
   const addStroke = (s: Stroke) => { setHistory((h) => [...h, strokes]); setFuture([]); setStrokes((v) => [...v, s]); };
+  const addPracticeStrokes = (target: string) => {
+    const practice = targetToPracticeStrokes(target, 100, 150 + notes.length * 70);
+    if (!practice.length) { toast.show("Use letters, numbers, or basic math symbols in the practice target."); return false; }
+    setHistory((history) => [...history, strokes]); setFuture([]); setStrokes((existing) => [...existing, ...practice]);
+    addNote({ x: 80, y: 90 + notes.length * 30 }, `Practice completion — student-confirmed target: ${target}`, undefined, "note");
+    return true;
+  };
   const erase = (p: Point) => {
     const radius = eraserRadiusFor(width);
     const remaining = strokes.filter((s) => !s.points.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < radius));
@@ -223,11 +234,22 @@ export function Workspace() {
     const boardSummary = boardContextEnabled
       ? [notes.slice(-4).map((note) => note.text).join(" "), `${strokes.length} handwritten stroke${strokes.length === 1 ? "" : "s"}`].filter(Boolean).join(". ")
       : undefined;
-    const context = { selectedText: selectedPdfText, visiblePageText, boardSummary, roastMode };
+    const baseContext = { selectedText: selectedPdfText, visiblePageText, boardSummary, roastMode, handwritingTarget, handwritingConfirmed };
+    let action = roastMode ? "roast" : "explain";
+    try { action = await decideTutorAction({ question: asked, ...baseContext }); } catch { toast.show("Decision service is unavailable; Scribble used its safe local routing."); }
+    const context = { ...baseContext, roastMode: action === "roast" };
+    if (action === "complete_handwriting") {
+      const completed = handwritingConfirmed && handwritingTarget.trim() && addPracticeStrokes(handwritingTarget.trim());
+      const body = completed ? "Added a clearly labeled vector practice completion from your confirmed target." : "Confirm an explicit practice target before Scribble adds any writing.";
+      const artifact: Artifact = { type: "steps", title: "Practice completion", body, steps: ["These are generated vector strokes, not a copy of your handwriting."], status: "not_applicable" };
+      setTurns((v) => [...v, { id: makeId(), question: asked, response: body, artifact, createdAt: new Date().toISOString() }]);
+      setBusy(false);
+      return;
+    }
     let artifact = makeArtifact(asked, context);
     let turn: Turn = { id: makeId(), question: asked, response: artifact.body, artifact, createdAt: new Date().toISOString() };
     try {
-      const remote = roastMode ? null : await askTutorService(apiSessionId, asked, context);
+      const remote = action === "roast" ? null : await askTutorService(apiSessionId, asked, context, action === "draw_graph");
       if (remote) { setApiSessionId(remote.sessionId); setApiWorksheetId(remote.worksheetId); turn = remote.turn; artifact = remote.turn.artifact; }
     } catch { toast.show("Tutor service is offline, so Scribble used its local study helper."); }
     setTurns((v) => [...v, turn]);
@@ -323,6 +345,8 @@ export function Workspace() {
     current, onDismissCurrent: () => setCurrent(null),
     live, voiceState: voice, onStartVoice: startVoice, onEndVoice: endVoice, onToggleMute: toggleMute,
     roastMode, onToggleRoastMode: () => setRoastMode((enabled) => !enabled),
+    handwritingTarget, onHandwritingTargetChange: (target: string) => { setHandwritingTarget(target); setHandwritingConfirmed(false); },
+    handwritingConfirmed, onHandwritingConfirmedChange: setHandwritingConfirmed,
   };
 
   return (
