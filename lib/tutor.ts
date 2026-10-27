@@ -13,13 +13,7 @@ export function makeArtifact(question: string, context: TutorContext = {}): Arti
     return { type: "steps", title: "Gentle roast", body: "Your algebra is doing parkour around the equals sign. Bold choice—but let’s land one step at a time.", steps: source ? ["I kept your selected context in view.", "Now make one legal transformation and write why it is valid."] : ["Give me a line of work to roast constructively."], status: "not_applicable" };
   }
   if (q.includes("plot") || q.includes("graph")) {
-    const expression = q.includes("cos") ? "cos(x)" : q.includes("x\u00b2") || q.includes("x^2") ? "x\u00b2" : "sin(x) + x/3";
-    const points = Array.from({ length: 61 }, (_, i) => {
-      const x = -6 + i / 5;
-      const y = expression === "cos(x)" ? Math.cos(x) : expression === "x\u00b2" ? (x * x) / 5 : Math.sin(x) + x / 3;
-      return { x, y };
-    });
-    return { type: "graph", title: "A quick visual check", body: "This bounded plot is generated locally from the supported expression. It is illustrative, not a proof.", graph: { expression, points }, status: "not_applicable" };
+    return { type: "steps", title: "Graph request", body: "Start the Scribble API to create a validated graph, then ask with an expression such as graph sin(x) + x/3.", steps: ["The graph endpoint validates the expression before creating board points."], status: "not_applicable" };
   }
   if (q.includes("check") || q.includes("correct")) {
     return {
