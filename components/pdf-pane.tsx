@@ -4,6 +4,7 @@ import { ChangeEvent, DragEvent, RefObject } from "react";
 import { TutorControls } from "./tutor-controls";
 import { ZOOM_PRESETS } from "../lib/board";
 import type { View } from "../lib/types";
+import { PdfDocument } from "./pdf-document";
 
 type TutorProps = Parameters<typeof TutorControls>[0];
 
@@ -13,6 +14,7 @@ export function PdfPane({
   dragOver, onDragOver, onDragLeave, onDrop,
   fileError, pdfLoading,
   highlightMode, onToggleHighlight, onAddToNotes, highlightHintSeen,
+  pageCount, onPageCount, onPageText, onTextSelection, selectedText,
   onTrySample,
   view, isFocused, isOtherFocused, onToggleFocus,
   mobileVisible, style, tutorProps,
@@ -36,6 +38,11 @@ export function PdfPane({
   onToggleHighlight: () => void;
   onAddToNotes: () => void;
   highlightHintSeen: boolean;
+  pageCount: number;
+  onPageCount: (count: number) => void;
+  onPageText: (text: string) => void;
+  onTextSelection: (text: string) => void;
+  selectedText: string;
   onTrySample: () => void;
   view: View;
   isFocused: boolean;
@@ -74,7 +81,7 @@ export function PdfPane({
           ) : (
             <span className="page-indicator" title={disabledTitle}>– / –</span>
           )}
-          <button onClick={() => onPageChange(page + 1)} disabled={!pdfUrl} title={pdfUrl ? "Next page" : disabledTitle} aria-label="Next page">›</button>
+          <button onClick={() => onPageChange(Math.min(pageCount || page + 1, page + 1))} disabled={!pdfUrl || (pageCount > 0 && page >= pageCount)} title={pdfUrl ? "Next page" : disabledTitle} aria-label="Next page">›</button>
         </div>
         <span className="toolbar-divider" />
         <div className="toolbar-group">
@@ -91,8 +98,8 @@ export function PdfPane({
           </button>
           {highlightMode && pdfUrl && (
             <span className="highlight-inline">
-              <button className="small-button" onClick={onAddToNotes}>Add to notes</button>
-              {!highlightHintSeen && <span className="inline-hint">Sends a page reference to your whiteboard</span>}
+              <button className="small-button" onClick={onAddToNotes} disabled={!selectedText}>Add selected text</button>
+              {!highlightHintSeen && <span className="inline-hint">Select document text, then send it to your whiteboard</span>}
             </span>
           )}
         </div>
@@ -111,11 +118,7 @@ export function PdfPane({
             <p>Opening document</p>
           </div>
         ) : pdfUrl ? (
-          <iframe
-            title={pdfName || "PDF document"}
-            src={`${pdfUrl}#page=${page}&zoom=${zoom}`}
-            style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left", width: `${10000 / zoom}%`, height: `${10000 / zoom}%` }}
-          />
+          <PdfDocument url={pdfUrl} page={page} zoom={zoom} onPageCount={onPageCount} onPageText={onPageText} onSelection={onTextSelection} />
         ) : (
           <div className={`pdf-empty ${dragOver ? "drag-over" : ""}`} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
             <button type="button" className="pdf-dropzone" onClick={onOpenPicker}>

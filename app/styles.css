@@ -156,7 +156,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .inline-hint { color: var(--muted); font-size: 11px; font-style: italic; }
 
 .pdf-stage { position: relative; flex: 1; min-height: 600px; overflow: auto; background: repeating-linear-gradient(0deg, rgba(96, 77, 55, .025) 0 1px, transparent 1px 5px), #f7f3ea; }
-.pdf-stage iframe { display: block; border: 0; min-height: 100%; background: #fff; }
+.pdf-document { position: relative; display: inline-block; min-width: 100%; vertical-align: top; background: #fff; }
+.pdf-document canvas { display: block; }
+/* The layer remains selectable while the canvas preserves the original page appearance. */
+.pdf-text-layer { position: absolute; inset: 0; padding: 18px; box-sizing: border-box; color: transparent; cursor: text; line-height: 1.45; user-select: text; white-space: pre-wrap; overflow: hidden; }
+.pdf-text-layer::selection { color: transparent; background: rgba(64, 115, 217, .32); }
+.pdf-error { display: grid; place-items: center; min-height: 560px; padding: 24px; color: var(--red); text-align: center; }
 
 .pdf-empty { position: relative; height: 100%; min-height: 560px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 40px 20px; text-align: center; }
 .pdf-empty.drag-over .pdf-dropzone { border-color: var(--blue); background: var(--cream); }

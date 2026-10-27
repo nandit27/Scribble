@@ -5,7 +5,7 @@ import type { VoiceState } from "../lib/bolna-client";
 
 export function TutorControls({
   askOpen, onOpenAsk, onCloseAsk, question, onQuestionChange, onAsk, busy,
-  current, onDismissCurrent, live, voiceState, onStartVoice, onEndVoice, onToggleMute,
+  current, onDismissCurrent, live, voiceState, onStartVoice, onEndVoice, onToggleMute, roastMode, onToggleRoastMode,
 }: {
   askOpen: boolean;
   onOpenAsk: () => void;
@@ -21,6 +21,8 @@ export function TutorControls({
   onStartVoice: () => void;
   onEndVoice: () => void;
   onToggleMute: () => void;
+  roastMode: boolean;
+  onToggleRoastMode: () => void;
 }) {
   return (
     <div className="tutor-controls">
@@ -34,9 +36,10 @@ export function TutorControls({
           </button>
         </>
       ) : (
-        <button className="tutor-status" onClick={onOpenAsk} title="Ask about your document or notes">
-          Ask tutor <kbd>/</kbd>
-        </button>
+        <>
+          <button className="tutor-status" onClick={onOpenAsk} title="Ask about your document or notes">Ask tutor <kbd>/</kbd></button>
+          <button className={`tutor-mini ${roastMode ? "is-active" : ""}`} onClick={onToggleRoastMode} aria-pressed={roastMode} title="Toggle playful, constructive roast mode">Roast</button>
+        </>
       )}
       {askOpen ? (
         <form className="tutor-ask" onSubmit={onAsk}>

@@ -4,10 +4,10 @@ import { BolnaWebCall } from "@bolna/web-call";
 
 export type VoiceState = "idle" | "connecting" | "active" | "muted" | "error";
 
-export function createVoiceCall(sessionId: string, onState: (state: VoiceState, message?: string) => void) {
+export function createVoiceCall(sessionId: string, context: Record<string, string>, onState: (state: VoiceState, message?: string) => void) {
   const call = new BolnaWebCall({
     sessionUrl: "/api/bolna-session",
-    userData: { scribble_session_id: sessionId },
+    userData: { scribble_session_id: sessionId, ...context },
   });
   call.on("state-change", (state: string) => {
     onState(state === "active" ? "active" : state === "connecting" || state === "ringing" ? "connecting" : "idle");

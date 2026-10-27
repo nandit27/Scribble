@@ -5,6 +5,7 @@ import { createVoiceCall, VoiceState } from "../lib/bolna-client";
 import { makeId } from "../lib/id";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
+import { askTutorService } from "../lib/tutor-api";
 import type { Artifact, BoardNote, Point, SavedState, Stroke, Tool, Turn, View } from "../lib/types";
 import { AppHeader, SyncStatus } from "./app-header";
 import { WelcomeScreen } from "./welcome-screen";
@@ -30,6 +31,7 @@ export function Workspace() {
   const [color, setColor] = useState("#202019");
   const [width, setWidth] = useState(3);
   const [question, setQuestion] = useState("");
+  const [roastMode, setRoastMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState<VoiceState>("idle");
 
@@ -41,6 +43,9 @@ export function Workspace() {
   const [dragOver, setDragOver] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfPageCount, setPdfPageCount] = useState(0);
+  const [visiblePageText, setVisiblePageText] = useState("");
+  const [selectedPdfText, setSelectedPdfText] = useState("");
   const [highlightMode, setHighlightMode] = useState(false);
   const [highlightHintSeen, setHighlightHintSeen] = useState(false);
 
@@ -70,6 +75,7 @@ export function Workspace() {
   const auth = useSupabaseAuth();
   const mergedUserId = useRef<string | null>(null);
   const voiceCall = useRef<ReturnType<typeof createVoiceCall> | null>(null);
+  const apiSessionId = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -209,8 +215,17 @@ export function Workspace() {
     setBusy(true); setQuestion(""); setAskOpen(false);
     setCurrent({ question: asked, mode: modeOf(asked) });
     await new Promise((r) => setTimeout(r, 500));
-    const artifact = makeArtifact(asked);
-    setTurns((v) => [...v, { id: makeId(), question: asked, response: artifact.body, artifact, createdAt: new Date().toISOString() }]);
+    const boardSummary = boardContextEnabled
+      ? [notes.slice(-4).map((note) => note.text).join(" "), `${strokes.length} handwritten stroke${strokes.length === 1 ? "" : "s"}`].filter(Boolean).join(". ")
+      : undefined;
+    const context = { selectedText: selectedPdfText, visiblePageText, boardSummary, roastMode };
+    let artifact = makeArtifact(asked, context);
+    let turn: Turn = { id: makeId(), question: asked, response: artifact.body, artifact, createdAt: new Date().toISOString() };
+    try {
+      const remote = roastMode ? null : await askTutorService(apiSessionId.current, asked, context);
+      if (remote) { apiSessionId.current = remote.sessionId; turn = remote.turn; artifact = remote.turn.artifact; }
+    } catch { toast.show("Tutor service is offline, so Scribble used its local study helper."); }
+    setTurns((v) => [...v, turn]);
     insertArtifact(artifact);
     setBusy(false);
   }
@@ -225,6 +240,9 @@ export function Workspace() {
       setPdfName(file.name);
       setPdfPath(undefined);
       setPage(1);
+      setPdfPageCount(0);
+      setVisiblePageText("");
+      setSelectedPdfText("");
       setPdfLoading(false);
       toast.show(`${file.name} is open. Highlights stay separate from the original file.`);
       if (auth.user) {
@@ -242,8 +260,9 @@ export function Workspace() {
 
   const toggleHighlight = () => setHighlightMode((v) => !v);
   const addToNotes = () => {
+    if (!selectedPdfText) { toast.show("Select text in the document first."); return; }
     if (view === "pdf") setView("split");
-    addNote({ x: 80, y: 80 + notes.length * 20 }, `Page ${page} selection`, undefined, "highlight", page);
+    addNote({ x: 80, y: 80 + notes.length * 20 }, selectedPdfText, undefined, "highlight", page);
     if (!highlightHintSeen) { setHighlightHintSeen(true); try { localStorage.setItem(HIGHLIGHT_HINT_KEY, "1"); } catch {} }
     toast.show("Added to your notes as a linked snippet.");
   };
@@ -251,7 +270,12 @@ export function Workspace() {
   const startVoice = async () => {
     setVoice("connecting");
     try {
-      const call = createVoiceCall("local-demo-session", (s, msg) => { setVoice(s); if (msg) toast.show(msg); });
+      const boardSummary = boardContextEnabled ? [notes.slice(-4).map((note) => note.text).join(" "), `${strokes.length} strokes on the board`].filter(Boolean).join(". ") : "";
+      const call = createVoiceCall(apiSessionId.current ?? "local-demo-session", {
+        selected_text: selectedPdfText.slice(0, 2000),
+        visible_page_text: selectedPdfText ? "" : visiblePageText.slice(0, 4000),
+        board_context: boardSummary.slice(0, 3000),
+      }, (s, msg) => { setVoice(s); if (msg) toast.show(msg); });
       voiceCall.current = call;
       await call.start();
       setVoice("active");
@@ -279,7 +303,7 @@ export function Workspace() {
     else setView("notes");
   };
 
-  const pdfContextLabel = pdfUrl ? `PDF: page ${page}` : "PDF: no document";
+  const pdfContextLabel = selectedPdfText ? `PDF: ${selectedPdfText.length} characters selected` : pdfUrl ? `PDF: page ${page}${pdfPageCount ? ` of ${pdfPageCount}` : ""}` : "PDF: no document";
   const notesContextLabel = boardContextEnabled ? `Notes: ${strokes.length} stroke${strokes.length === 1 ? "" : "s"}` : "Notes: hidden from tutor";
 
   const tutorProps = {
@@ -287,6 +311,7 @@ export function Workspace() {
     question, onQuestionChange: setQuestion, onAsk: ask, busy,
     current, onDismissCurrent: () => setCurrent(null),
     live, voiceState: voice, onStartVoice: startVoice, onEndVoice: endVoice, onToggleMute: toggleMute,
+    roastMode, onToggleRoastMode: () => setRoastMode((enabled) => !enabled),
   };
 
   return (
@@ -340,6 +365,7 @@ export function Workspace() {
                 dragOver={dragOver} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
                 fileError={fileError} pdfLoading={pdfLoading}
                 highlightMode={highlightMode} onToggleHighlight={toggleHighlight} onAddToNotes={addToNotes} highlightHintSeen={highlightHintSeen}
+                pageCount={pdfPageCount} onPageCount={setPdfPageCount} onPageText={setVisiblePageText} onTextSelection={setSelectedPdfText} selectedText={selectedPdfText}
                 onTrySample={onTrySample}
                 view={view} isFocused={focusedPane === "pdf"} isOtherFocused={focusedPane === "notes"} onToggleFocus={() => toggleFocus("pdf")}
                 mobileVisible={mobileTab === "pdf"}
