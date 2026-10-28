@@ -7,3 +7,5 @@ __pycache__/
 dist/
 *.tsbuildinfo
 package-lock.json
+.vercel
+.env.prod 

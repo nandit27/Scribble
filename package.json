@@ -10,7 +10,7 @@
   "dependencies": {
     "@bolna/web-call": "^3.0.1",
     "@supabase/supabase-js": "^2.118.0",
-    "next": "15.4.6",
+    "next": "15.5.28",
     "pdfjs-dist": "^6.4.299",
     "react": "19.1.0",
     "react-dom": "19.1.0",

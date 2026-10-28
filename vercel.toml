@@ -1,0 +1,14 @@
+[services.web]
+root = "."
+
+[services.api]
+root = "services/"
+entrypoint = "main:app"
+
+[[rewrites]]
+source = "/api/v1/(.*)"
+destination = { service = "api" }
+
+[[rewrites]]
+source = "/(.*)"
+destination = { service = "web" }
