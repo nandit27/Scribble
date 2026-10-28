@@ -214,6 +214,7 @@ export function Workspace() {
   const addNote = (p: Point, text = "New note", graph?: BoardNote["graph"], kind: BoardNote["kind"] = "note", notePage?: number) =>
     setNotes((v) => [...v, { id: makeId(), x: p.x, y: p.y, text, kind, graph, page: notePage }]);
   const removeNote = (id: string) => setNotes((v) => v.filter((note) => note.id !== id));
+  const moveNote = (id: string, p: Point) => setNotes((v) => v.map((note) => note.id === id ? { ...note, x: p.x, y: p.y } : note));
 
   const dismissBoardHint = () => { if (!boardHintDismissed) { setBoardHintDismissed(true); try { localStorage.setItem(BOARD_HINT_KEY, "1"); } catch {} } };
 
@@ -414,7 +415,7 @@ export function Workspace() {
             {view !== "pdf" && (
               <BoardPane
                 strokes={strokes} notes={notes} tool={tool} onToolChange={setTool} color={color} onColorChange={setColor} width={width} onWidthChange={setWidth}
-                onStroke={addStroke} onErase={erase} onAddNote={(p) => addNote(p)} onRemoveNote={removeNote}
+                onStroke={addStroke} onErase={erase} onAddNote={(p) => addNote(p)} onRemoveNote={removeNote} onMoveNote={moveNote}
                 undo={undo} redo={redo} canUndo={history.length > 0} canRedo={future.length > 0}
                 confirmingClear={confirmingClear} onRequestClear={() => setConfirmingClear(true)}
                 onConfirmClear={() => { setHistory((h) => [...h, strokes]); setFuture([]); setStrokes([]); setConfirmingClear(false); toast.show("Canvas cleared. Undo to bring your strokes back."); }}

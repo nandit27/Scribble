@@ -9,7 +9,7 @@ type TutorProps = Parameters<typeof TutorControls>[0];
 
 export function BoardPane({
   strokes, notes, tool, onToolChange, color, onColorChange, width, onWidthChange,
-  onStroke, onErase, onAddNote, onRemoveNote,
+  onStroke, onErase, onAddNote, onRemoveNote, onMoveNote,
   undo, redo, canUndo, canRedo,
   confirmingClear, onRequestClear, onConfirmClear, onCancelClear,
   boardContextEnabled, onToggleBoardContext,
@@ -30,6 +30,7 @@ export function BoardPane({
   onErase: (p: Point) => void;
   onAddNote: (p: Point) => void;
   onRemoveNote: (id: string) => void;
+  onMoveNote: (id: string, p: Point) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -72,9 +73,13 @@ export function BoardPane({
 
       <div className="pane-toolbar board-toolbar">
         <div className="toolbar-group segmented" role="group" aria-label="Drawing tool">
-          {(["pen", "eraser", "text"] as const).map((t) => (
-            <button key={t} className={tool === t ? "is-active" : ""} aria-pressed={tool === t} onClick={() => onToolChange(t)}>
-              {t === "pen" ? "Pen" : t === "eraser" ? "Eraser" : "Text"}
+          {(["pan", "pen", "eraser", "text"] as const).map((t) => (
+            <button key={t} className={tool === t ? "is-active" : ""} aria-pressed={tool === t} onClick={() => onToolChange(t)} title={t === "pan" ? "Move around the whiteboard" : undefined}>
+              {t === "pan" ? (
+                <svg className="tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7.5 11V5.75a1.75 1.75 0 0 1 3.5 0V10m0-7.25a1.75 1.75 0 0 1 3.5 0V10m0-5.75a1.75 1.75 0 0 1 3.5 0V11m0-3.25a1.75 1.75 0 0 1 3.5 0v5.5c0 4.42-2.58 7-7 7h-1.25a6.25 6.25 0 0 1-5.3-2.94L4.1 14.6a1.75 1.75 0 0 1 3.02-1.8l.38.63V11" />
+                </svg>
+              ) : t === "pen" ? "Pen" : t === "eraser" ? "Eraser" : "Text"}
             </button>
           ))}
         </div>
@@ -132,6 +137,7 @@ export function BoardPane({
         onErase={onErase}
         onAddNote={onAddNote}
         onRemoveNote={onRemoveNote}
+        onMoveNote={onMoveNote}
         showHint={showHint}
         onFirstInteraction={onFirstInteraction}
       />

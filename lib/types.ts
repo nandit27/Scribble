@@ -38,4 +38,4 @@ export type SavedState = {
 };
 
 export type View = "welcome" | "pdf" | "notes" | "split";
-export type Tool = "pen" | "eraser" | "text";
+export type Tool = "pen" | "eraser" | "text" | "pan";

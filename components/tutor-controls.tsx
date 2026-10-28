@@ -42,7 +42,14 @@ export function TutorControls({
         </>
       ) : (
         <>
-          <button className="tutor-status" onClick={onOpenAsk} title="Ask about your document or notes">Ask tutor <kbd>/</kbd></button>
+          <button
+            className={`tutor-status ${askOpen ? "is-active" : ""}`}
+            onClick={askOpen ? onCloseAsk : onOpenAsk}
+            aria-expanded={askOpen}
+            title={askOpen ? "Close tutor controls" : "Ask about your document or notes"}
+          >
+            Ask tutor <kbd>/</kbd>
+          </button>
           <button className={`tutor-mini ${roastMode ? "is-active" : ""}`} onClick={onToggleRoastMode} aria-pressed={roastMode} title="Toggle playful, constructive roast mode">Roast</button>
         </>
       )}
@@ -53,7 +60,6 @@ export function TutorControls({
             value={question}
             onChange={(e) => onQuestionChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") onCloseAsk(); }}
-            onBlur={() => { if (!question.trim()) onCloseAsk(); }}
             placeholder="Explain, hint, check, or plot"
             aria-label="Ask Scribble"
           />

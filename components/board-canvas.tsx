@@ -12,6 +12,7 @@ export function BoardCanvas({
   strokes, notes, tool, color, width, eraserRadius,
   zoom, pan, onZoomChange, onPanChange,
   onStroke, onErase, onAddNote, onRemoveNote,
+  onMoveNote,
   showHint, onFirstInteraction,
 }: {
   strokes: Stroke[];
@@ -28,6 +29,7 @@ export function BoardCanvas({
   onErase: (p: Point) => void;
   onAddNote: (p: Point) => void;
   onRemoveNote: (id: string) => void;
+  onMoveNote: (id: string, p: Point) => void;
   showHint: boolean;
   onFirstInteraction: () => void;
 }) {
@@ -37,6 +39,7 @@ export function BoardCanvas({
   const [pointerScreen, setPointerScreen] = useState<Point | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStart = useRef<{ x: number; y: number; pan: Point } | null>(null);
+  const noteDrag = useRef<{ id: string; startX: number; startY: number; point: Point } | null>(null);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -59,7 +62,7 @@ export function BoardCanvas({
 
   const down = (e: ReactPointerEvent) => {
     (e.target as Element).setPointerCapture?.(e.pointerId);
-    if (spaceDown) { setPanning(true); panStart.current = { x: e.clientX, y: e.clientY, pan }; return; }
+    if (spaceDown || tool === "pan") { setPanning(true); panStart.current = { x: e.clientX, y: e.clientY, pan }; return; }
     const p = toLocal(e.clientX, e.clientY);
     if (tool === "text") { onAddNote(p); onFirstInteraction(); return; }
     setActive([p]);
@@ -86,6 +89,29 @@ export function BoardCanvas({
     setActive(null);
   };
 
+  const startNoteDrag = (e: ReactPointerEvent<HTMLDivElement>, note: BoardNote) => {
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    noteDrag.current = { id: note.id, startX: e.clientX, startY: e.clientY, point: { x: note.x, y: note.y } };
+  };
+
+  const moveNote = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = noteDrag.current;
+    if (!drag) return;
+    e.stopPropagation();
+    onMoveNote(drag.id, {
+      x: drag.point.x + (e.clientX - drag.startX) / zoom,
+      y: drag.point.y + (e.clientY - drag.startY) / zoom,
+    });
+  };
+
+  const endNoteDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!noteDrag.current) return;
+    e.stopPropagation();
+    noteDrag.current = null;
+  };
+
   const onWheel = (e: ReactWheelEvent) => {
     if (!e.ctrlKey) return;
     e.preventDefault();
@@ -98,7 +124,7 @@ export function BoardCanvas({
     onPanChange({ x: sx - localX * next, y: sy - localY * next });
   };
 
-  const cursor = spaceDown ? (panning ? "grabbing" : "grab") : tool === "pen" ? "crosshair" : tool === "text" ? "text" : "none";
+  const cursor = spaceDown || tool === "pan" ? (panning ? "grabbing" : "grab") : tool === "pen" ? "crosshair" : tool === "text" ? "text" : "none";
 
   return (
     <div className="board-canvas-wrap">
@@ -120,8 +146,14 @@ export function BoardCanvas({
           ))}
           {active && <polyline points={active.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />}
           {notes.map((n) => (
-            <foreignObject key={n.id} x={n.x} y={n.y} width={n.graph ? 280 : 240} height={n.graph ? 280 : 160} overflow="visible">
-              <div className={`board-note ${n.kind}`}>
+            <foreignObject key={n.id} x={n.x} y={n.y} width={n.graph ? 300 : 300} height={n.graph ? 320 : 280}>
+              <div
+                className={`board-note ${n.kind}`}
+                onPointerDown={(e) => startNoteDrag(e, n)}
+                onPointerMove={moveNote}
+                onPointerUp={endNoteDrag}
+                onPointerCancel={endNoteDrag}
+              >
                 <button className="note-remove" onPointerDown={(e) => e.stopPropagation()} onClick={() => onRemoveNote(n.id)} aria-label="Dismiss note">×</button>
                 <span>{n.kind === "equation" ? "Equation" : n.kind === "highlight" ? `Linked note · page ${n.page ?? "?"}` : "Tutor note"}</span>
                 {n.text}
@@ -146,7 +178,7 @@ export function BoardCanvas({
         )}
       </div>
       <div className={`board-hint ${showHint ? "" : "is-hidden"}`} aria-hidden={!showHint}>
-        {tool === "text" ? "Click anywhere to add a note" : "Draw to get started · hold space to pan · Ctrl + scroll to zoom"}
+        {tool === "text" ? "Click anywhere to add a note" : tool === "pan" ? "Drag to move around the whiteboard" : "Draw to get started · hold space to pan · Ctrl + scroll to zoom"}
       </div>
     </div>
   );
