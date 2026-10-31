@@ -69,10 +69,15 @@ export function AppHeader({
         </div>
         <div className="top-actions">
           <AuthPanel email={authEmail} onSignIn={onSignIn} onSignOut={onSignOut} />
-          <span className={`voice-pill ${voice}`} title="Start a voice conversation with the tutor using your microphone.">
+          <button
+            className={`voice-pill ${voice}`}
+            onClick={tutorProps.live ? tutorProps.onEndVoice : tutorProps.onStartVoice}
+            title={tutorProps.live ? "End voice conversation" : "Start a voice conversation with your microphone"}
+            aria-label={tutorProps.live ? "End voice conversation" : "Start voice conversation"}
+          >
             <i />
-            {voice === "active" ? "Listening" : voice === "connecting" ? "Connecting" : voice === "muted" ? "Muted" : voice === "error" ? "Voice unavailable" : "Voice ready"}
-          </span>
+            {voice === "active" ? "Listening - end" : voice === "connecting" ? "Connecting..." : voice === "muted" ? "Muted - end" : voice === "error" ? "Retry voice" : "Start voice"}
+          </button>
         </div>
       </header>
       {view === "split" && (

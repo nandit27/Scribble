@@ -43,13 +43,13 @@ export function TutorControls({
       ) : (
         <>
           <button
-            className={`tutor-status ${askOpen ? "is-active" : ""}`}
-            onClick={askOpen ? onCloseAsk : onOpenAsk}
-            aria-expanded={askOpen}
-            title={askOpen ? "Close tutor controls" : "Ask about your document or notes"}
+            className="tutor-status"
+            onClick={onStartVoice}
+            title="Start a voice conversation"
           >
-            Ask tutor <kbd>/</kbd>
+            Ask tutor
           </button>
+          <button className="tutor-mini" onClick={askOpen ? onCloseAsk : onOpenAsk} aria-expanded={askOpen} title="Type a question">{askOpen ? "Close typing" : "Type"}</button>
           <button className={`tutor-mini ${roastMode ? "is-active" : ""}`} onClick={onToggleRoastMode} aria-pressed={roastMode} title="Toggle playful, constructive roast mode">Roast</button>
         </>
       )}
@@ -72,10 +72,6 @@ export function TutorControls({
           <p>{current.question}</p>
           <button className="tutor-mini" onClick={onDismissCurrent} aria-label="Dismiss last question">×</button>
         </div>
-      ) : !live ? (
-        <button className="tutor-mini tutor-listen" onClick={onStartVoice} title="Start a voice conversation">
-          Listen
-        </button>
       ) : null}
     </div>
   );

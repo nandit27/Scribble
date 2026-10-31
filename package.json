@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "api": "python -m uvicorn services.main:app --reload",
+    "api": "python -m uvicorn services.main:app --reload --env-file .env",
     "build": "next build",
     "start": "next start"
   },

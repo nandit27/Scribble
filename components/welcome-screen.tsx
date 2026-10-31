@@ -11,7 +11,7 @@ const OPTIONS: { view: View; glyph: "pdf" | "notes" | "split"; title: string; de
 ];
 
 export function WelcomeScreen({
-  sessionName, hasProgress, updatedAt, contentsLabel, onContinue, onSelect,
+  sessionName, hasProgress, updatedAt, contentsLabel, onContinue, onSelect, onStartVoice,
 }: {
   sessionName: string;
   hasProgress: boolean;
@@ -19,6 +19,7 @@ export function WelcomeScreen({
   contentsLabel: string;
   onContinue: () => void;
   onSelect: (view: View) => void;
+  onStartVoice: () => void;
 }) {
   return (
     <section className="welcome">
@@ -36,6 +37,21 @@ export function WelcomeScreen({
             <span className="continue-row-arrow" aria-hidden="true">→</span>
           </button>
         )}
+
+        <button className="voice-start-card" onClick={onStartVoice}>
+          <span className="voice-start-icon" aria-hidden="true">&#127908;</span>
+          <span className="voice-start-copy">
+            <strong>Talk to Scribble</strong>
+            <span>Allow your microphone, then ask your math question out loud.</span>
+          </span>
+          <span className="voice-start-action">Start voice</span>
+        </button>
+
+        <ol className="welcome-guide" aria-label="How to use Scribble">
+          <li><b>1</b><span>Open side by side.</span></li>
+          <li><b>2</b><span>Select a PDF line or write on the board.</span></li>
+          <li><b>3</b><span>Click <strong>Start voice</strong> and speak.</span></li>
+        </ol>
 
         <div className="welcome-section">
           <span className="label">Start something new</span>

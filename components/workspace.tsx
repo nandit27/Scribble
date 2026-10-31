@@ -5,7 +5,7 @@ import { createVoiceCall, VoiceState } from "../lib/bolna-client";
 import { makeId } from "../lib/id";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
-import { askTutorService, ensureTutorContext } from "../lib/tutor-api";
+import { askTutorService, ensureTutorContext, getTutorTurns } from "../lib/tutor-api";
 import { decideTutorAction } from "../lib/jev-client";
 import { targetToPracticeStrokes } from "../lib/handwriting";
 import type { Artifact, BoardNote, Point, SavedState, Stroke, Tool, Turn, View } from "../lib/types";
@@ -81,6 +81,8 @@ export function Workspace() {
   const auth = useSupabaseAuth();
   const mergedUserId = useRef<string | null>(null);
   const voiceCall = useRef<ReturnType<typeof createVoiceCall> | null>(null);
+  const voicePoll = useRef<number | null>(null);
+  const voiceTurnIds = useRef(new Set<string>());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +110,7 @@ export function Workspace() {
     }
     try { setHighlightHintSeen(localStorage.getItem(HIGHLIGHT_HINT_KEY) === "1"); } catch {}
     try { setBoardHintDismissed(localStorage.getItem(BOARD_HINT_KEY) === "1"); } catch {}
-    return () => { void voiceCall.current?.stop(); };
+    return () => { if (voicePoll.current) window.clearInterval(voicePoll.current); void voiceCall.current?.stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -304,24 +306,56 @@ export function Workspace() {
       if (!attached?.worksheetId) throw new Error("Add document or board context before starting voice.");
       setApiSessionId(attached.sessionId);
       setApiWorksheetId(attached.worksheetId);
+      const startedAt = new Date().toISOString();
       const call = createVoiceCall(attached.sessionId, {
         worksheet_id: attached.worksheetId,
         selected_text: selectedPdfText.slice(0, 2000),
         visible_page_text: selectedPdfText ? "" : visiblePageText.slice(0, 4000),
         board_context: boardSummary.slice(0, 3000),
-      }, (s, msg) => { setVoice(s); if (msg) toast.show(msg); });
+      }, (s, msg) => {
+        setVoice(s);
+        if (s === "idle" && voicePoll.current) { window.clearInterval(voicePoll.current); voicePoll.current = null; }
+        if (msg) toast.show(msg);
+      });
       voiceCall.current = call;
       await call.start();
+      const syncVoiceArtifacts = async () => {
+        try {
+          const newTurns = await getTutorTurns(attached.sessionId, startedAt);
+          for (const turn of newTurns) {
+            if (voiceTurnIds.current.has(turn.id)) continue;
+            voiceTurnIds.current.add(turn.id);
+            setTurns((existing) => existing.some((item) => item.id === turn.id) ? existing : [...existing, turn]);
+            insertArtifact(turn.artifact);
+            toast.show("Scribble added the voice answer to your board.");
+          }
+        } catch { /* The voice call remains usable if a turn has not arrived yet. */ }
+      };
+      if (voicePoll.current) window.clearInterval(voicePoll.current);
+      voicePoll.current = window.setInterval(() => { void syncVoiceArtifacts(); }, 1500);
+      void syncVoiceArtifacts();
       setVoice("active");
       toast.show("Microphone active. Ask a short question, or type at any time.");
-    } catch {
+    } catch (error) {
       setVoice("error");
-      toast.show("Voice is unavailable without Bolna credentials. Typed tutoring remains available.");
+      toast.show(error instanceof Error ? error.message : "Voice could not start. Please try again.");
     }
   };
-  const endVoice = () => { void voiceCall.current?.stop(); voiceCall.current = null; setVoice("idle"); toast.show("Voice ended. Your notes remain saved."); };
+  const endVoice = () => { if (voicePoll.current) window.clearInterval(voicePoll.current); voicePoll.current = null; void voiceCall.current?.stop(); voiceCall.current = null; setVoice("idle"); toast.show("Voice ended. Your notes remain saved."); };
   const toggleMute = () => { voiceCall.current?.setMuted(voice !== "muted"); setVoice(voice === "muted" ? "active" : "muted"); };
   const live = voice === "active" || voice === "muted" || voice === "connecting";
+
+  // Keep the active worksheet current while a call is in progress.
+  useEffect(() => {
+    if (!live || !apiSessionId) return;
+    const timer = window.setTimeout(() => {
+      const boardSummary = boardContextEnabled ? notes.slice(-4).map((note) => note.text).filter(Boolean).join(" ") : "";
+      void ensureTutorContext(apiSessionId, { selectedText: selectedPdfText, visiblePageText, boardSummary })
+        .then((attached) => { if (attached?.worksheetId) setApiWorksheetId(attached.worksheetId); })
+        .catch(() => { toast.show("Could not update the tutor's worksheet context."); });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [live, apiSessionId, selectedPdfText, visiblePageText, notes, boardContextEnabled]);
 
   const toggleFocus = (pane: "pdf" | "notes") => setFocusedPane((cur) => (cur === pane ? null : pane));
 
@@ -380,6 +414,7 @@ export function Workspace() {
           contentsLabel={contentsLabel}
           onContinue={handleContinue}
           onSelect={setView}
+          onStartVoice={() => { setView("split"); void startVoice(); }}
         />
       ) : (
         <>

@@ -40,6 +40,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .session-name-input { border: 1px solid var(--blue); background: var(--paper); padding: 5px 7px; border-radius: 8px; min-width: 160px; }
 .save-state, .voice-pill, .label, .context-chip, .mode-chip { font-family: Figtree, sans-serif; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .save-state, .voice-pill { display: inline-flex; align-items: center; color: var(--muted); font-size: 10px; line-height: 1.2; }
+.voice-pill { border: 1px solid var(--line); border-radius: 999px; background: var(--paper); padding: 7px 10px; transition: background .15s ease, border-color .15s ease; }
+.voice-pill:hover { border-color: var(--blue); background: #f2f6ff; color: var(--blue); }
 .save-state i, .voice-pill i { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--moss); }
 .voice-pill.connecting i { background: var(--ochre); }
 .voice-pill.active i, .voice-pill.muted i, .voice-pill.error i { background: var(--coral); }
@@ -85,6 +87,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .continue-row-arrow { font-size: 20px; }
 
 .welcome-section { display: flex; flex-direction: column; gap: 12px; }
+.voice-start-card { display: flex; align-items: center; gap: 14px; width: 100%; margin: 0 0 14px; padding: 16px 18px; border: 1px solid var(--blue); border-radius: 14px; background: #f2f6ff; color: var(--ink); text-align: left; transition: transform .15s ease, background .15s ease; }
+.voice-start-card:hover { transform: translateY(-1px); background: #e8f0ff; }
+.voice-start-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--blue); font-size: 17px; }
+.voice-start-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.voice-start-copy strong { font-family: "Bricolage Grotesque", sans-serif; font-size: 18px; letter-spacing: -.035em; }
+.voice-start-copy span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.voice-start-action { flex: none; padding: 8px 10px; border-radius: 8px; background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; }
+.welcome-guide { display: flex; gap: 8px; margin: 0 0 34px; padding: 0; list-style: none; }
+.welcome-guide li { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.welcome-guide b { display: grid; flex: none; place-items: center; width: 19px; height: 19px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); font-size: 10px; }
 .option-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--paper); }
 .option-row { display: flex; align-items: center; gap: 18px; width: 100%; min-height: 72px; padding: 16px 20px; border: 0; border-bottom: 1px solid var(--line); background: var(--paper); color: var(--ink); text-align: left; transition: background .15s ease; }
 .option-list .option-row:last-child { border-bottom: 0; }

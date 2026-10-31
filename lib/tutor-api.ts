@@ -15,9 +15,29 @@ function graphExpression(question: string, context: TutorContext): string | null
 }
 
 async function request(path: string, init?: RequestInit) {
-  const response = await fetch(`${API_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
-  if (!response.ok) throw new Error("Tutor service unavailable");
+  let response: Response;
+  try {
+    response = await fetch(`/api/tutor-proxy${path.replace(/^\/api\/v1/, "")}`, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
+  } catch {
+    throw new Error("Cannot reach the tutor service. Start the API and check NEXT_PUBLIC_API_URL.");
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(typeof body?.error === "string" ? body.error : "Tutor service unavailable");
+  }
   return response.json();
+}
+
+function toTurn(result: ApiTurn): Turn {
+  const artifact: Artifact = {
+    type: result.artifact.type === "graph" ? "graph" : result.artifact.type === "mistake" ? "check" : "steps",
+    title: result.artifact.title,
+    body: result.spoken_response,
+    steps: result.artifact.steps?.map((step) => step.text),
+    graph: result.artifact.graph,
+    status: result.verification.status,
+  };
+  return { id: result.turn_id, question: result.question_text, response: result.spoken_response, artifact, createdAt: result.created_at };
 }
 
 export async function askTutorService(sessionId: string | null, question: string, context: TutorContext, forceGraph = false): Promise<{ sessionId: string; worksheetId: string; turn: Turn } | null> {
@@ -39,20 +59,20 @@ export async function askTutorService(sessionId: string | null, question: string
   const data = await request(`/api/v1/sessions/${id}/turns`);
   const result = data.turns.at(-1) as ApiTurn | undefined;
   if (!result) throw new Error("Tutor service returned no turn");
-  const artifact: Artifact = {
-    type: result.artifact.type === "graph" ? "graph" : result.artifact.type === "mistake" ? "check" : "steps",
-    title: result.artifact.title,
-    body: result.spoken_response,
-    steps: result.artifact.steps?.map((step) => step.text),
-    graph: result.artifact.graph,
-    status: result.verification.status,
-  };
-  return { sessionId: id, worksheetId: attached.worksheetId, turn: { id: result.turn_id, question: result.question_text, response: result.spoken_response, artifact, createdAt: result.created_at } };
+  return { sessionId: id, worksheetId: attached.worksheetId, turn: toTurn(result) };
+}
+
+/** Reads visual artifacts created by Bolna's tutor_turn tool during a live voice session. */
+export async function getTutorTurns(sessionId: string, after?: string): Promise<Turn[]> {
+  if (!API_URL) return [];
+  const suffix = after ? `?after=${encodeURIComponent(after)}` : "";
+  const data = await request(`/api/v1/sessions/${sessionId}/turns${suffix}`) as { turns?: ApiTurn[] };
+  return (data.turns ?? []).map(toTurn);
 }
 
 /** Creates/restores an opaque API session and attaches the current study context as its active worksheet. */
 export async function ensureTutorContext(sessionId: string | null, context: TutorContext): Promise<{ sessionId: string; worksheetId?: string } | null> {
-  if (!API_URL) return null;
+  if (!API_URL) throw new Error("Tutor service is not configured. Set NEXT_PUBLIC_API_URL and restart the app.");
   const source = context.selectedText || context.visiblePageText || context.boardSummary;
   const create = async () => (await request("/api/v1/sessions", { method: "POST" })).session_id as string;
   let id = sessionId ?? await create();

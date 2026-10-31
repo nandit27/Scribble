@@ -20,10 +20,10 @@ Scribble keeps all three in one place. Select the exact phrase in a PDF, sketch 
 
 1. Open the live app and choose **Document** or **Split** view.
 2. Upload a PDF and select the line that is confusing.
-3. Click **Ask tutor** and say or type: *"Give me a hint, not the answer."*
+3. Click **Ask tutor** to speak, or **Type** and enter: *"Give me a hint, not the answer."*
 4. Watch the explanation become a board artifact beside the source.
 5. Ask: *"Graph sin(x) + x/3."* Scribble validates the expression server-side and draws the returned points on the board.
-6. Click **Listen** to start the Bolna-powered in-browser voice experience once the Bolna environment variables are configured.
+6. Click **Ask tutor** or **Start voice** to start the Bolna-powered in-browser voice experience once the Bolna environment variables and tutor API are configured.
 
 ## Why voice matters here
 
@@ -114,7 +114,7 @@ npm run api
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Restart the Next.js server after changing `.env`. Voice also requires the tutor API to be running and reachable at `NEXT_PUBLIC_API_URL`; deployed apps need these variables configured in their hosting environment.
 
 ## Configure the integrations
 
@@ -138,7 +138,9 @@ POST https://scribble-teal.vercel.app/api/v1/tools/tutor-turn
 X-Scribble-Tool-Secret: <BOLNA_TOOL_SHARED_SECRET>
 ```
 
-Pass the current `scribble_session_id` and the student's `question`. The endpoint responds with the spoken tutor response and persists the matching artifact for Scribble.
+Pass the current `scribble_session_id` and the student's `question`; for a graph, also pass `intent: graph_expression` and an `expression` in math syntax when known. The agent should use the returned context to answer naturally and ask for clarification when required. The endpoint persists the artifact for Scribble. The tool must reach the same running API instance used by the browser: the demo store is in memory, so a public deployment and a local API do not share sessions. For local development, expose the local API through a public HTTPS tunnel and configure the Bolna tool to use that address and the matching shared secret.
+
+Voice receives selected or extracted PDF text and typed board notes captured when the call starts. It does not currently read handwritten strokes, screenshots, or changes made after the call starts. Restart the call to refresh the text context. The built-in tutor tool uses demonstration responses; the Bolna agent must generate a contextual answer instead of reading those templates verbatim.
 
 ## API map
 

@@ -137,6 +137,19 @@ def intent_for(question: str) -> str:
     return "explain_concept"
 
 
+def expression_from_text(text: str) -> str | None:
+    """Extract an explicitly written expression, leaving ambiguous requests for clarification."""
+    match = re.search(r"(?:f\s*\(\s*x\s*\)|y)\s*=\s*([^\n,;?!]+)", text, re.I)
+    if not match:
+        match = re.search(r"\b(?:graph|plot|sketch)\s+(?:(?:the|a)\s+)?(?:(?:of|for)\s+)?(?:function\s+)?([^\n,;?!]+)", text, re.I)
+    if not match:
+        return None
+    candidate = re.sub(r"\s+(?:please|for me|on (?:the|my) (?:board|screen)).*$", "", match.group(1), flags=re.I).strip()
+    candidate = re.sub(r"\bx\s+squared\b", "x**2", candidate, flags=re.I)
+    candidate = re.sub(r"\bx\s+cubed\b", "x**3", candidate, flags=re.I)
+    return candidate if candidate and re.search(r"[x0-9]", candidate, re.I) else None
+
+
 def build_turn(request: TutorRequest, worksheet: dict[str, Any]) -> dict[str, Any]:
     intent = request.intent or intent_for(request.question)
     problem = worksheet.get("confirmed_problem_text")
@@ -144,7 +157,7 @@ def build_turn(request: TutorRequest, worksheet: dict[str, Any]) -> dict[str, An
         return make_turn(request, intent, "Please confirm the extracted problem before I explain it.", "clarification", "Confirm the worksheet", [], "not_applicable")
     if intent == "check_work" and not request.focus_text:
         return make_turn(request, intent, "I can check it, but I need the line you want me to inspect. Type or select that step first.", "clarification", "Which step should I check?", [], "not_applicable")
-    expression = request.expression or next(iter(worksheet.get("expressions", [])), None)
+    expression = request.expression or expression_from_text(request.question) or next(iter(worksheet.get("expressions", [])), None) or expression_from_text(problem)
     if intent == "graph_expression":
         expression = request.expression or expression
         if not expression:
@@ -243,7 +256,7 @@ def persist_turn(payload: TutorRequest):
     if not worksheet_id: raise error(409, "worksheet_not_confirmed", "Confirm a worksheet before asking Scribble.")
     turn = build_turn(payload, Store.worksheets[worksheet_id])
     Store.turns[payload.scribble_session_id].append(turn)
-    return {"turn_id": turn["turn_id"], "spoken_response": turn["spoken_response"], "artifact_summary": f"Added {turn['artifact']['title']} to the notebook.", "status": "ok"}
+    return {"turn_id": turn["turn_id"], "spoken_response": turn["spoken_response"], "artifact_summary": f"Added {turn['artifact']['title']} to the notebook." if not turn["clarification_required"] else "No artifact was added.", "status": "ok", "context": Store.worksheets[worksheet_id].get("confirmed_problem_text", ""), "clarification_required": turn["clarification_required"]}
 
 
 @app.get("/api/v1/sessions/{session_id}/turns")
