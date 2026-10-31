@@ -3,6 +3,7 @@
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { createVoiceCall, VoiceState } from "../lib/bolna-client";
 import { makeId } from "../lib/id";
+import { captureStudyImages } from "../lib/visual-context";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
 import { askTutorService, ensureTutorContext, getTutorTurns } from "../lib/tutor-api";
@@ -38,6 +39,7 @@ export function Workspace() {
   const [handwritingConfirmed, setHandwritingConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState<VoiceState>("idle");
+  const [visualContext, setVisualContext] = useState("");
 
   const [pdfUrl, setPdfUrl] = useState("");
   const [pdfName, setPdfName] = useState("");
@@ -325,9 +327,16 @@ export function Workspace() {
           for (const turn of newTurns) {
             if (voiceTurnIds.current.has(turn.id)) continue;
             voiceTurnIds.current.add(turn.id);
-            setTurns((existing) => existing.some((item) => item.id === turn.id) ? existing : [...existing, turn]);
-            insertArtifact(turn.artifact);
-            toast.show("Scribble added the voice answer to your board.");
+            let displayedTurn = turn;
+            if (/\b(plot|graph|sketch)\b/i.test(turn.question) && turn.artifact.type !== "graph") {
+              try {
+                const graphTurn = await askTutorService(attached.sessionId, turn.question, { selectedText: selectedPdfText, visiblePageText, boardSummary }, true);
+                if (graphTurn?.turn.artifact.type === "graph") displayedTurn = { ...graphTurn.turn, id: turn.id };
+              } catch { /* Keep the tutor's clarification when the expression is unclear. */ }
+            }
+            setTurns((existing) => existing.some((item) => item.id === displayedTurn.id) ? existing : [...existing, displayedTurn]);
+            insertArtifact(displayedTurn.artifact);
+            toast.show(displayedTurn.artifact.type === "graph" ? "Scribble added the graph to your board." : "Scribble added the voice answer to your board.");
           }
         } catch { /* The voice call remains usable if a turn has not arrived yet. */ }
       };
@@ -345,17 +354,35 @@ export function Workspace() {
   const toggleMute = () => { voiceCall.current?.setMuted(voice !== "muted"); setVoice(voice === "muted" ? "active" : "muted"); };
   const live = voice === "active" || voice === "muted" || voice === "connecting";
 
+  useEffect(() => {
+    setVisualContext("");
+    if (!live) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      const images = captureStudyImages(strokes, boardContextEnabled);
+      if (!images.length) return;
+      try {
+        const response = await fetch("/api/visual-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images }), signal: controller.signal });
+        if (response.ok) {
+          const result = await response.json();
+          if (!controller.signal.aborted) setVisualContext(result.text ?? "");
+        }
+      } catch { /* Text context remains available if vision is not configured. */ }
+    }, 2500);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [live, page, pdfUrl, strokes, boardContextEnabled]);
+
   // Keep the active worksheet current while a call is in progress.
   useEffect(() => {
     if (!live || !apiSessionId) return;
     const timer = window.setTimeout(() => {
-      const boardSummary = boardContextEnabled ? notes.slice(-4).map((note) => note.text).filter(Boolean).join(" ") : "";
+      const boardSummary = [boardContextEnabled ? notes.slice(-4).map((note) => note.text).filter(Boolean).join(" ") : "", visualContext && `Visual transcription (may contain errors): ${visualContext}`].filter(Boolean).join("\n");
       void ensureTutorContext(apiSessionId, { selectedText: selectedPdfText, visiblePageText, boardSummary })
         .then((attached) => { if (attached?.worksheetId) setApiWorksheetId(attached.worksheetId); })
         .catch(() => { toast.show("Could not update the tutor's worksheet context."); });
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [live, apiSessionId, selectedPdfText, visiblePageText, notes, boardContextEnabled]);
+  }, [live, apiSessionId, selectedPdfText, visiblePageText, notes, boardContextEnabled, visualContext]);
 
   const toggleFocus = (pane: "pdf" | "notes") => setFocusedPane((cur) => (cur === pane ? null : pane));
 

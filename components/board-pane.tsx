@@ -117,7 +117,7 @@ export function BoardPane({
         <span className="toolbar-spacer" />
         <button className="context-chip" role="switch" aria-checked={boardContextEnabled} onClick={onToggleBoardContext} title="Control whether the tutor can reference this board">
           <span className="chip-switch" aria-hidden="true" />
-          {boardContextEnabled ? "Tutor can see this board" : "Tutor can't see this board"}
+          {boardContextEnabled ? "Share board with tutor" : "Board hidden from tutor"}
         </button>
         {view !== "split" && tutorProps && <TutorControls {...tutorProps} />}
       </div>

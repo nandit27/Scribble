@@ -214,6 +214,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .eraser-ring { position: absolute; margin: 0; border: 1.5px solid var(--ink); border-radius: 50%; background: rgba(32, 32, 25, .07); pointer-events: none; transform: translate(-50%, -50%); }
 
 .board-note { position: relative; width: 100%; max-height: 250px; overflow: auto; padding: 18px 21px 16px; cursor: grab; border: 1px solid rgba(94, 75, 47, .27); border-radius: 12px; background: #fff7bd; color: #4f422b; box-shadow: 0 9px 15px rgba(76, 60, 35, .14); font-family: Kalam, cursive; font-size: 18px; font-weight: 700; line-height: 1.35; white-space: pre-line; transform: rotate(-1deg); }
+.board-note.has-graph { max-height: 380px; }
 .board-note.equation { background: #e8f0fb; }
 .board-note.highlight { background: var(--cream); }
 .board-note > span { display: block; margin-bottom: 6px; color: var(--coral); font-family: Figtree, sans-serif; font-size: 9px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }

@@ -4,7 +4,9 @@
 
 [**Open the live app**](https://scribble-teal.vercel.app) · [**Built for the Bolna x YC Symphony Buildathon**](https://www.bolna.ai/symphony/buildathon/)
 
-<img width="1775" height="866" alt="Scribble's document-and-whiteboard workspace" src="https://github.com/user-attachments/assets/f58f7103-fdf6-415a-940a-6a5c5290f832" />
+![A worked example in Scribble: the relations and functions PDF beside notes and a graph of f(x) = 2x](docs/images/worked-workspace.png)
+
+*Example workspace using the textbook in `test/`: a linked problem, worked notes, a sampled graph, and a pen annotation. The board content is arranged for illustration.*
 
 > **Read the problem. Circle the stuck point. Ask out loud. See the next step land beside your work.**
 
@@ -168,3 +170,5 @@ python -m py_compile services/main.py
 ---
 
 Built for the [Bolna x YC Symphony Buildathon](https://www.bolna.ai/symphony/buildathon/): bring any idea, give it a voice.
+
+For voice recognition of the visible PDF page and handwritten board strokes, set `GEMINI_API_KEY` and optionally `GEMINI_VISION_MODEL` in `.env` and restart Next.js. During voice calls the app periodically sends changed page or board images for transcription; the board share switch excludes handwritten board strokes. Recognition can be imperfect.

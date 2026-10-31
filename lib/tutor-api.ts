@@ -7,11 +7,11 @@ type ApiTurn = { turn_id: string; question_text: string; spoken_response: string
 type GraphPayload = NonNullable<Artifact["graph"]>;
 
 function graphExpression(question: string, context: TutorContext): string | null {
-  const explicit = question.match(/(?:plot|graph|sketch)\s+(?:the\s+)?(?:function\s+)?(?:y\s*=\s*|f\s*\(\s*x\s*\)\s*=\s*)?([^?.!]+)/i)?.[1]?.trim();
+  const explicit = question.match(/(?:plot|graph|sketch)\s+(?:(?:the|a)\s+)?(?:(?:of|for)\s+)?(?:function\s+)?(?:y\s*=\s*|f\s*\(\s*x\s*\)\s*=\s*)?([^?.!]+)/i)?.[1]?.trim();
   const source = context.selectedText || context.visiblePageText || "";
   const fromSource = source.match(/(?:f\s*\(\s*x\s*\)|y)\s*=\s*([^\n,;]+)/i)?.[1]?.trim();
   const candidate = explicit && /[x\d]|sin|cos|tan|exp/i.test(explicit) ? explicit : fromSource;
-  return candidate?.replace(/\bplease\b/gi, "").trim() || null;
+  return candidate?.replace(/\bx\s+squared\b/gi, "x**2").replace(/\bx\s+cubed\b/gi, "x**3").replace(/\bplease\b/gi, "").trim() || null;
 }
 
 async function request(path: string, init?: RequestInit) {
@@ -73,7 +73,7 @@ export async function getTutorTurns(sessionId: string, after?: string): Promise<
 /** Creates/restores an opaque API session and attaches the current study context as its active worksheet. */
 export async function ensureTutorContext(sessionId: string | null, context: TutorContext): Promise<{ sessionId: string; worksheetId?: string } | null> {
   if (!API_URL) throw new Error("Tutor service is not configured. Set NEXT_PUBLIC_API_URL and restart the app.");
-  const source = context.selectedText || context.visiblePageText || context.boardSummary;
+  const source = [context.selectedText && `Selected text: ${context.selectedText}`, context.visiblePageText && `Document: ${context.visiblePageText}`, context.boardSummary && `Board: ${context.boardSummary}`].filter(Boolean).join("\n\n").slice(0, 12000);
   const create = async () => (await request("/api/v1/sessions", { method: "POST" })).session_id as string;
   let id = sessionId ?? await create();
   if (!source) return { sessionId: id };

@@ -146,9 +146,9 @@ export function BoardCanvas({
           ))}
           {active && <polyline points={active.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />}
           {notes.map((n) => (
-            <foreignObject key={n.id} x={n.x} y={n.y} width={n.graph ? 300 : 300} height={n.graph ? 320 : 280}>
+            <foreignObject key={n.id} x={n.x} y={n.y} width={n.graph ? 300 : 300} height={n.graph ? 400 : 280}>
               <div
-                className={`board-note ${n.kind}`}
+                className={`board-note ${n.kind} ${n.graph ? "has-graph" : ""}`}
                 onPointerDown={(e) => startNoteDrag(e, n)}
                 onPointerMove={moveNote}
                 onPointerUp={endNoteDrag}
