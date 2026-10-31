@@ -6,13 +6,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 type ApiTurn = { turn_id: string; question_text: string; spoken_response: string; created_at: string; artifact: { type: string; title: string; steps?: { text: string }[]; graph?: Artifact["graph"] }; verification: { status: string } };
 type GraphPayload = NonNullable<Artifact["graph"]>;
 
-function graphExpression(question: string, context: TutorContext): string | null {
+export function graphExpression(question: string, context: TutorContext): string | null {
   const explicit = question.match(/(?:plot|graph|sketch)\s+(?:(?:the|a)\s+)?(?:(?:of|for)\s+)?(?:function\s+)?(?:y\s*=\s*|f\s*\(\s*x\s*\)\s*=\s*)?([^?.!]+)/i)?.[1]?.trim();
   const source = context.selectedText || context.visiblePageText || "";
   const fromSource = source.match(/(?:f\s*\(\s*x\s*\)|y)\s*=\s*([^\n,;]+)/i)?.[1]?.trim();
   const candidate = explicit && /[x\d]|sin|cos|tan|exp/i.test(explicit) ? explicit : fromSource;
-  return candidate?.replace(/\bx\s+squared\b/gi, "x**2").replace(/\bx\s+cubed\b/gi, "x**3").replace(/\bplease\b/gi, "").trim() || null;
+  return candidate?.replace(/\s+(?:and|then)\s+(?:explain|tell|show|describe|check)\b.*$/i, "").replace(/\u00b2/g, "**2").replace(/\u00b3/g, "**3").replace(/\bx\s+squared\b/gi, "x**2").replace(/\bx\s+cubed\b/gi, "x**3").replace(/\bplease\b/gi, "").trim() || null;
 }
+
+class TutorApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 
 async function request(path: string, init?: RequestInit) {
   let response: Response;
@@ -23,7 +25,7 @@ async function request(path: string, init?: RequestInit) {
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(typeof body?.error === "string" ? body.error : "Tutor service unavailable");
+    throw new TutorApiError(typeof body?.error === "string" ? body.error : "Tutor service unavailable", response.status);
   }
   return response.json();
 }
@@ -62,6 +64,21 @@ export async function askTutorService(sessionId: string | null, question: string
   return { sessionId: id, worksheetId: attached.worksheetId, turn: toTurn(result) };
 }
 
+/** Render a graph requested in a voice turn against the existing voice worksheet. */
+export async function graphVoiceTurn(worksheetId: string, turn: Turn, context: TutorContext): Promise<Turn | null> {
+  const expression = graphExpression(turn.question, context);
+  if (!expression) return null;
+  let graph: GraphPayload;
+  try {
+    graph = await request(`/api/v1/worksheets/${worksheetId}/graph`, { method: "POST", body: JSON.stringify({ expression }) }) as GraphPayload;
+  } catch (error) {
+    if (error instanceof TutorApiError && error.status >= 400 && error.status < 500) return null;
+    throw error;
+  }
+  const artifact: Artifact = { type: "graph", title: `Graph of ${graph.expression}`, body: `Plotted ${graph.expression}.`, graph, status: "verified" };
+  return { ...turn, artifact, response: artifact.body };
+}
+
 /** Reads visual artifacts created by Bolna's tutor_turn tool during a live voice session. */
 export async function getTutorTurns(sessionId: string, after?: string): Promise<Turn[]> {
   if (!API_URL) return [];
@@ -71,7 +88,7 @@ export async function getTutorTurns(sessionId: string, after?: string): Promise<
 }
 
 /** Creates/restores an opaque API session and attaches the current study context as its active worksheet. */
-export async function ensureTutorContext(sessionId: string | null, context: TutorContext): Promise<{ sessionId: string; worksheetId?: string } | null> {
+export async function ensureTutorContext(sessionId: string | null, context: TutorContext, restoreMissing = true): Promise<{ sessionId: string; worksheetId?: string } | null> {
   if (!API_URL) throw new Error("Tutor service is not configured. Set NEXT_PUBLIC_API_URL and restart the app.");
   const source = [context.selectedText && `Selected text: ${context.selectedText}`, context.visiblePageText && `Document: ${context.visiblePageText}`, context.boardSummary && `Board: ${context.boardSummary}`].filter(Boolean).join("\n\n").slice(0, 12000);
   const create = async () => (await request("/api/v1/sessions", { method: "POST" })).session_id as string;
@@ -84,9 +101,9 @@ export async function ensureTutorContext(sessionId: string | null, context: Tuto
   try {
     const worksheet = await attach(id);
     return { sessionId: id, worksheetId: worksheet.worksheet_id as string };
-  } catch {
-    // The demo API stores sessions in memory; a server restart invalidates a persisted ID.
-    if (!sessionId) throw new Error("Tutor context could not be attached");
+  } catch (error) {
+    // Only restore a session that the service explicitly reports as missing.
+    if (!restoreMissing || !sessionId || !(error instanceof TutorApiError) || error.status !== 404) throw error;
     id = await create();
     const worksheet = await attach(id);
     return { sessionId: id, worksheetId: worksheet.worksheet_id as string };

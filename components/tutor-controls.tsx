@@ -63,6 +63,7 @@ export function TutorControls({
             placeholder="Explain, hint, check, or plot"
             aria-label="Ask Scribble"
           />
+          <button className="tutor-mini" type="submit" disabled={busy || !question.trim()}>Send</button>
           <input value={handwritingTarget} onChange={(e) => onHandwritingTargetChange(e.target.value)} placeholder="Optional: exact writing target" aria-label="Confirmed handwriting target" />
           <label className="tutor-confirm"><input type="checkbox" checked={handwritingConfirmed} onChange={(e) => onHandwritingConfirmedChange(e.target.checked)} /> I confirm this is practice text</label>
         </form>

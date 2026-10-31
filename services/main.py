@@ -55,7 +55,7 @@ class ConfirmWorksheet(BaseModel):
 class TutorRequest(BaseModel):
     scribble_session_id: str
     question: str = Field(min_length=2, max_length=3000)
-    intent: Literal["explain_concept", "give_hint", "check_work", "graph_expression", "solve_problem"] | None = None
+    intent: Literal["explain_concept", "give_hint", "check_work", "graph_expression", "solve_problem", "summarize"] | None = None
     focus_text: str | None = Field(default=None, max_length=2000)
     expression: str | None = Field(default=None, max_length=250)
 
@@ -131,6 +131,7 @@ def graph(expression: str, x_min: float = -6.28, x_max: float = 6.28) -> dict[st
 def intent_for(question: str) -> str:
     q = question.lower()
     if any(word in q for word in ["plot", "graph", "sketch"]): return "graph_expression"
+    if any(word in q for word in ["takeaway", "summarize", "summary"]): return "summarize"
     if any(word in q for word in ["hint", "next step", "don't solve"]): return "give_hint"
     if any(word in q for word in ["check", "wrong", "mistake"]): return "check_work"
     if "solve" in q: return "solve_problem"
@@ -145,6 +146,8 @@ def expression_from_text(text: str) -> str | None:
     if not match:
         return None
     candidate = re.sub(r"\s+(?:please|for me|on (?:the|my) (?:board|screen)).*$", "", match.group(1), flags=re.I).strip()
+    candidate = re.split(r"\s+(?:and|then)\s+(?:explain|tell|show|describe|check)\b", candidate, maxsplit=1, flags=re.I)[0].strip()
+    candidate = candidate.replace("\u00b2", "**2").replace("\u00b3", "**3")
     candidate = re.sub(r"\bx\s+squared\b", "x**2", candidate, flags=re.I)
     candidate = re.sub(r"\bx\s+cubed\b", "x**3", candidate, flags=re.I)
     return candidate if candidate and re.search(r"[x0-9]", candidate, re.I) else None
@@ -162,8 +165,19 @@ def build_turn(request: TutorRequest, worksheet: dict[str, Any]) -> dict[str, An
         expression = request.expression or expression
         if not expression:
             return make_turn(request, intent, "Tell me the expression you want to plot, for example sin(x) or x**2.", "clarification", "Which expression should I plot?", [], "not_applicable")
-        payload = graph(expression)
+        try:
+            payload = graph(expression)
+        except HTTPException:
+            return make_turn(request, intent, "I could not read that expression. Please say it using x, numbers and basic operations.", "clarification", "Which expression should I plot?", [], "not_applicable")
         return make_turn(request, intent, f"I plotted {payload['expression']}. Notice how the curve changes as x moves across the axis.", "graph", f"Graph of {payload['expression']}", [{"text": "Use the grid to compare values on either side of zero."}], "verified", payload)
+    if intent == "summarize":
+        if "x**2" in problem or "x squared" in problem.lower() or "x squared" in request.question.lower():
+            spoken = "The graph of x squared is a parabola. Inputs x and negative x have the same output, so it is not one-to-one on the real numbers."
+            steps = [{"text": "f(1) = f(-1) = 1, so two inputs share an output."}, {"text": "Restrict the domain to x >= 0 to make it one-to-one."}]
+        else:
+            spoken = "The key idea is to test one-to-one with equal outputs and onto by checking whether every target output has a preimage."
+            steps = [{"text": "For one-to-one, start with f(a) = f(b)."}, {"text": "For onto, solve y = f(x) for an allowed x."}]
+        return make_turn(request, intent, spoken, "concept", "Takeaway", steps, "not_applicable")
     if intent == "give_hint":
         return make_turn(request, intent, "Start by naming the function and checking what happens at a simple value such as x equals zero. Then tell me what you notice.", "hint", "A next-step hint", [{"text": "Substitute x = 0 before expanding or simplifying."}], "not_applicable")
     if intent == "check_work":
@@ -256,7 +270,7 @@ def persist_turn(payload: TutorRequest):
     if not worksheet_id: raise error(409, "worksheet_not_confirmed", "Confirm a worksheet before asking Scribble.")
     turn = build_turn(payload, Store.worksheets[worksheet_id])
     Store.turns[payload.scribble_session_id].append(turn)
-    return {"turn_id": turn["turn_id"], "spoken_response": turn["spoken_response"], "artifact_summary": f"Added {turn['artifact']['title']} to the notebook." if not turn["clarification_required"] else "No artifact was added.", "status": "ok", "context": Store.worksheets[worksheet_id].get("confirmed_problem_text", ""), "clarification_required": turn["clarification_required"]}
+    return {"turn_id": turn["turn_id"], "spoken_response": turn["spoken_response"], "artifact_summary": f"{turn['artifact']['title']} is ready for the workspace." if not turn["clarification_required"] else "No artifact was added.", "status": "ok", "context": Store.worksheets[worksheet_id].get("confirmed_problem_text", ""), "clarification_required": turn["clarification_required"]}
 
 
 @app.get("/api/v1/sessions/{session_id}/turns")

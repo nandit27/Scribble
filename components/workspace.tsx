@@ -6,7 +6,7 @@ import { makeId } from "../lib/id";
 import { captureStudyImages } from "../lib/visual-context";
 import { eraserRadiusFor } from "../lib/board";
 import { makeArtifact, modeOf } from "../lib/tutor";
-import { askTutorService, ensureTutorContext, getTutorTurns } from "../lib/tutor-api";
+import { askTutorService, ensureTutorContext, getTutorTurns, graphVoiceTurn } from "../lib/tutor-api";
 import { decideTutorAction } from "../lib/jev-client";
 import { targetToPracticeStrokes } from "../lib/handwriting";
 import type { Artifact, BoardNote, Point, SavedState, Stroke, Tool, Turn, View } from "../lib/types";
@@ -85,6 +85,7 @@ export function Workspace() {
   const voiceCall = useRef<ReturnType<typeof createVoiceCall> | null>(null);
   const voicePoll = useRef<number | null>(null);
   const voiceTurnIds = useRef(new Set<string>());
+  const voiceTurnsInFlight = useRef(new Set<string>());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -204,7 +205,7 @@ export function Workspace() {
     const practice = targetToPracticeStrokes(target, 100, 150 + notes.length * 70);
     if (!practice.length) { toast.show("Use letters, numbers, or basic math symbols in the practice target."); return false; }
     setHistory((history) => [...history, strokes]); setFuture([]); setStrokes((existing) => [...existing, ...practice]);
-    addNote({ x: 80, y: 90 + notes.length * 30 }, `Practice completion — student-confirmed target: ${target}`, undefined, "note");
+    addNote({ x: 25, y: 240 }, `Practice completion — student-confirmed target: ${target}`, undefined, "note");
     return true;
   };
   const erase = (p: Point) => {
@@ -225,7 +226,11 @@ export function Workspace() {
   const insertArtifact = (artifact: Artifact) => {
     if (view === "pdf") setView("split");
     const text = artifact.type === "steps" ? `${artifact.title}\n${artifact.steps?.join("\n")}` : artifact.body;
-    addNote({ x: 80, y: 80 + notes.length * 30 }, text, artifact.graph);
+    const position = artifact.type === "graph" ? { x: 350, y: 20 }
+      : artifact.title === "Gentle roast" ? { x: 350, y: 365 }
+      : artifact.title === "Takeaway" ? { x: 25, y: 20 }
+      : { x: 25, y: 250 };
+    addNote(position, text, artifact.graph);
     toast.show("Scribble's answer is on the board.");
   };
 
@@ -308,7 +313,9 @@ export function Workspace() {
       if (!attached?.worksheetId) throw new Error("Add document or board context before starting voice.");
       setApiSessionId(attached.sessionId);
       setApiWorksheetId(attached.worksheetId);
-      const startedAt = new Date().toISOString();
+      // Establish a server-side baseline before the call; browser clocks can differ from the API.
+      const existingTurns = await getTutorTurns(attached.sessionId);
+      for (const turn of existingTurns) voiceTurnIds.current.add(turn.id);
       const call = createVoiceCall(attached.sessionId, {
         worksheet_id: attached.worksheetId,
         selected_text: selectedPdfText.slice(0, 2000),
@@ -323,17 +330,23 @@ export function Workspace() {
       await call.start();
       const syncVoiceArtifacts = async () => {
         try {
-          const newTurns = await getTutorTurns(attached.sessionId, startedAt);
+          const newTurns = await getTutorTurns(attached.sessionId);
           for (const turn of newTurns) {
-            if (voiceTurnIds.current.has(turn.id)) continue;
-            voiceTurnIds.current.add(turn.id);
+            if (voiceTurnIds.current.has(turn.id) || voiceTurnsInFlight.current.has(turn.id)) continue;
+            voiceTurnsInFlight.current.add(turn.id);
             let displayedTurn = turn;
             if (/\b(plot|graph|sketch)\b/i.test(turn.question) && turn.artifact.type !== "graph") {
               try {
-                const graphTurn = await askTutorService(attached.sessionId, turn.question, { selectedText: selectedPdfText, visiblePageText, boardSummary }, true);
-                if (graphTurn?.turn.artifact.type === "graph") displayedTurn = { ...graphTurn.turn, id: turn.id };
-              } catch { /* Keep the tutor's clarification when the expression is unclear. */ }
+                const graphTurn = await graphVoiceTurn(attached.worksheetId!, turn, { selectedText: selectedPdfText, visiblePageText, boardSummary });
+                if (graphTurn) displayedTurn = graphTurn;
+              } catch {
+                voiceTurnsInFlight.current.delete(turn.id);
+                // Leave the turn unhandled so the next poll can retry a transient failure.
+                continue;
+              }
             }
+            voiceTurnIds.current.add(turn.id);
+            voiceTurnsInFlight.current.delete(turn.id);
             setTurns((existing) => existing.some((item) => item.id === displayedTurn.id) ? existing : [...existing, displayedTurn]);
             insertArtifact(displayedTurn.artifact);
             toast.show(displayedTurn.artifact.type === "graph" ? "Scribble added the graph to your board." : "Scribble added the voice answer to your board.");
@@ -377,7 +390,7 @@ export function Workspace() {
     if (!live || !apiSessionId) return;
     const timer = window.setTimeout(() => {
       const boardSummary = [boardContextEnabled ? notes.slice(-4).map((note) => note.text).filter(Boolean).join(" ") : "", visualContext && `Visual transcription (may contain errors): ${visualContext}`].filter(Boolean).join("\n");
-      void ensureTutorContext(apiSessionId, { selectedText: selectedPdfText, visiblePageText, boardSummary })
+      void ensureTutorContext(apiSessionId, { selectedText: selectedPdfText, visiblePageText, boardSummary }, false)
         .then((attached) => { if (attached?.worksheetId) setApiWorksheetId(attached.worksheetId); })
         .catch(() => { toast.show("Could not update the tutor's worksheet context."); });
     }, 600);
